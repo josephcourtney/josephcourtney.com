@@ -184,7 +184,7 @@ aside > h2 {
 .nav
 {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   margin-top: 5%;
   width: 100%;
   justify-content: center
