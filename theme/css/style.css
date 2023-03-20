@@ -197,9 +197,11 @@ aside > h2 {
   font-size: 15px;
   padding-top: 5px;
   padding-bottom: 5px;
+  padding-left: 3%;
+  padding-right: 3%;
   border-bottom: 1px solid #328cc7;
   /* overflow: hidden; */
-  white-space: nowrap;
+  white-space: wrap;
   width: 100%;
   color: #fff;
   text-decoration: none;
