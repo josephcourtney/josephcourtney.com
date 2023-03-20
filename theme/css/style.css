@@ -184,7 +184,7 @@ aside > h2 {
 .nav
 {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   margin-top: 5%;
   width: 100%;
   justify-content: center
@@ -201,7 +201,7 @@ aside > h2 {
   padding-right: 3%;
   border-bottom: 1px solid #328cc7;
   /* overflow: hidden; */
-  white-space: wrap;
+  white-space: nowrap;
   width: 100%;
   color: #fff;
   text-decoration: none;
