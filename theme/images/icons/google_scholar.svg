@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+
+<svg
+   aria-label="Google Scholar"
+   role="img"
+   viewBox="0 0 512 512"
+   version="1.1"
+   id="svg6"
+   sodipodi:docname="google-scholar.svg"
+   inkscape:version="1.2.2 (b0a84865, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs10" />
+  <sodipodi:namedview
+     id="namedview8"
+     pagecolor="#505050"
+     bordercolor="#ffffff"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="1"
+     inkscape:deskcolor="#505050"
+     showgrid="false"
+     inkscape:zoom="0.4609375"
+     inkscape:cx="-92.20339"
+     inkscape:cy="339.52542"
+     inkscape:window-width="1440"
+     inkscape:window-height="797"
+     inkscape:window-x="0"
+     inkscape:window-y="1685"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg6" />
+  <path
+     id="path903"
+     style="fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:1.13486;stroke-opacity:1"
+     d="M 256 0.56835938 A 255.43257 255.43257 0 0 0 0.56835938 256 A 255.43257 255.43257 0 0 0 256 511.43164 A 255.43257 255.43257 0 0 0 511.43164 256 A 255.43257 255.43257 0 0 0 256 0.56835938 z M 213 111 L 393 111 L 377 127 L 377 152 C 380 153 382 157 382 160 L 382 263 C 381 273.99999 361 275.99999 359 263 L 359 160 C 359 157 361 153 364 151 L 365 135 L 320 173 C 324 187.99999 328 199.00002 326 216 C 322 239.99998 301.99998 250.00002 287 267 C 280.00001 278.99999 285.00002 289.00002 308 307 C 328.99998 323.99998 343 343.00004 339 378 C 330.00001 412.99996 286.99996 433 249 432 C 220.00003 432 161 422.99995 157 378 C 157 337.00004 217.00004 312 260 311 C 249.00001 299.00001 246.00001 289.99998 253 272 C 216.00004 269 180 249.99995 175 205 L 106 205 L 213 111 z M 243.15039 152.15625 C 239.88745 152.04688 236.5 152.3125 233 153 C 184.00005 164.99999 210.00006 261.99999 271 252 C 313.18746 239.81251 292.09443 153.79687 243.15039 152.15625 z M 266 325 C 230.00004 325 195 348.00002 195 373 C 194 398.99997 232.00004 411.99999 276 403 C 326.99995 388.00002 325.99994 337.99999 266 325 z " />
+</svg>
