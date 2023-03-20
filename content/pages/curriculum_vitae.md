@@ -4,11 +4,16 @@ Modified: 2019-09-19 16:22
 Authors: Joseph Courtney
 Summary: Curriculum Vitae
 
-##Education
-###National Institutes of Health – Postdoc
-#05/2017 –
-Post-Doctoral research in the lab of Dr. Adriaan Bax in the Laboratory of Chemical Physics of the NIDDK developing methodology for investigating protein folding by pressure-jump NMR spectroscopy.
+##Employment
+###UConn Health – Postdoc
+#06/2022 –
+Post-Doctoral researcher in the lab of Dr. Jeff Hoch building tools to lower the barrier-of-entry for NMR on biomolecules.
 
+###National Institutes of Health – Postdoc
+#05/2017 – 06/2022
+Post-Doctoral researcher in the lab of Dr. Adriaan Bax in the Laboratory of Chemical Physics of the NIDDK developing methodology for investigating protein folding by pressure-jump NMR spectroscopy.
+
+##Education
 ###University of Illinois at Urbana-Champaign – Ph.D.
 #08/2011 – 04/2017
 Doctoral student in the physical chemistry program with advisor Professor Chad Rienstra focusing on novel data analysis techniques for protein structure determination from minimal datasets and the application of magic angle spinning solid-state NMR to alpha-synuclein amyloid fibrils.
