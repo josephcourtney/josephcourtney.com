@@ -1,2 +1,22 @@
-<?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>Joseph Courtney</title><link href="https://josephcourtney.com/" rel="alternate"/><link href="https://josephcourtney.com/feeds/all.atom.xml" rel="self"/><id>https://josephcourtney.com/</id><updated>2019-09-23T11:27:00-04:00</updated><entry><title>Why NMR?</title><link href="https://josephcourtney.com/why-nmr.html" rel="alternate"/><published>2019-09-23T11:27:00-04:00</published><updated>2019-09-23T11:27:00-04:00</updated><author><name>Joseph Courtney</name></author><id>tag:josephcourtney.com,2019-09-23:/why-nmr.html</id><summary type="html">&lt;p&gt;My opinions on why NMR is a useful technique.&lt;/p&gt;</summary><content type="html">&lt;p&gt;Why do NMR? Nuclear Magnetic Resonance (NMR) is one of if not the most commonly used spectroscopic techniques used today. NMR is used by synthetic organic chemists to determine chemical structures, check the purity of their products, and to help pick apart reaction mechanisms. However, the vast majority of the use of NMR is as a push-button experiment.&lt;/p&gt;</content><category term="Structural Biology"/><category term="opinion"/></entry></feed>
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:feed xmlns:ns0="http://www.w3.org/2005/Atom">
+  <ns0:title>Joseph Courtney</ns0:title>
+  <ns0:id>https://josephcourtney.com/feeds/all.atom.xml</ns0:id>
+  <ns0:updated>2019-09-23T15:27:00Z</ns0:updated>
+  <ns0:link rel="self" href="https://josephcourtney.com/feeds/all.atom.xml" type="application/atom+xml" />
+  <ns0:link rel="alternate" href="https://josephcourtney.com/" type="text/html" />
+  <ns0:entry>
+    <ns0:title>Why NMR?</ns0:title>
+    <ns0:id>https://josephcourtney.com/why-nmr.html</ns0:id>
+    <ns0:updated>2019-09-23T15:27:00Z</ns0:updated>
+    <ns0:published>2019-09-23T15:27:00Z</ns0:published>
+    <ns0:link rel="alternate" href="https://josephcourtney.com/why-nmr.html" />
+    <ns0:author>
+      <ns0:name>Joseph Courtney</ns0:name>
+    </ns0:author>
+    <ns0:summary>My opinions on why NMR is a useful technique.</ns0:summary>
+    <ns0:category term="Structural Biology" />
+    <ns0:category term="opinion" />
+    <ns0:content type="html">&lt;p&gt;Why do NMR? Nuclear Magnetic Resonance (NMR) is one of if not the most commonly used spectroscopic techniques used today. NMR is used by synthetic organic chemists to determine chemical structures, check the purity of their products, and to help pick apart reaction mechanisms. However, the vast majority of the use of NMR is as a push-button experiment.&lt;/p&gt;</ns0:content>
+  </ns0:entry>
+</ns0:feed>
