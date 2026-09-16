@@ -576,7 +576,12 @@ article section .blog-post {
 /* Severe zoom / very narrow effective CSS viewports. */
 @media (max-width: 240px) {
   .site-sidebar {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "brand"
+      "social"
+      "toggle"
+      "nav";
     gap: 0.45rem;
     padding-inline: 0.55rem;
   }
@@ -593,7 +598,43 @@ article section .blog-post {
     margin-top: 0.1rem;
   }
 
+  .social a {
+    flex: 0 0 24px;
+    min-width: 24px;
+    min-height: 24px;
+  }
+
+  .js .menu-toggle {
+    justify-self: start;
+  }
+
   body > main {
     padding-inline: 12px;
+  }
+}
+
+/* At 200% text on a 320px physical viewport, prioritize content and controls. */
+@media (max-width: 180px) {
+  .site-sidebar {
+    grid-template-areas:
+      "social"
+      "toggle"
+      "nav";
+    gap: 6px;
+    padding: 8px 9px;
+  }
+
+  .site-brand {
+    display: none;
+  }
+
+  .social {
+    margin: 0;
+  }
+
+  .js .menu-toggle {
+    padding: 5px 8px;
+    font-size: 0.75rem;
+    line-height: 1.2;
   }
 }
