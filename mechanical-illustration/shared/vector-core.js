@@ -47,8 +47,72 @@ function halfplane(poly,fn,keepPositive=true,eps=1e-10){
 }
 // Remove the intersection of any convex occluder and the half-space nearer
 // than a subject. All inputs are projected polygons with an affine depth law.
+  function fastSubtractPerspective(subject,sourcePlane,occluder,epsilon,minArea){
+    const eps=epsilon,p=occluder.pts,pl=occluder.plane;
+    const cx=pl[0]-sourcePlane[0],cy=pl[1]-sourcePlane[1],cz=pl[2]-sourcePlane[2]-eps;
+    let near=false;
+    for(let i=0;i<subject.length;i++){
+      const q=subject[i];if(cx*q.x+cy*q.y+cz>0){near=true;break;}
+    }
+    if(!near)return [subject];
+    let signs=occluder._edgeEquations;
+    if(!signs){
+      const sign=Math.sign(area(p))||1;
+      signs=p.map((q,i)=>{
+        const r=p[(i+1)%p.length],ax=sign*(q.y-r.y),ay=sign*(r.x-q.x);
+        return [ax,ay,-ax*q.x-ay*q.y];
+      });
+      if(Object.isExtensible(occluder))occluder._edgeEquations=signs;
+    }
+    // A separating edge proves no visible region is affected.
+    for(let i=0;i<3;i++){
+      const [ax,ay,ac]=signs[i];let anyInside=false;
+      for(let k=0;k<subject.length;k++){
+        const q=subject[k];if(ax*q.x+ay*q.y+ac>=-1e-10){anyInside=true;break;}
+      }
+      if(!anyInside)return [subject];
+    }
+    let inside=subject;
+    const out=[];
+    function split(poly,ax,ay,ac){
+      const ins=[],outs=[];let a=poly[poly.length-1],fa=ax*a.x+ay*a.y+ac;
+      for(let i=0;i<poly.length;i++){
+        const b=poly[i],fb=ax*b.x+ay*b.y+ac,ia=fa>=-1e-10,ib=fb>=-1e-10;
+        if(ia!==ib){
+          const t=Math.max(0,Math.min(1,fa/(fa-fb)));
+          const v={x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,
+                   inv:a.inv+(b.inv-a.inv)*t,light:a.light+(b.light-a.light)*t};
+          ins.push(v);outs.push(v);
+        }
+        (ib?ins:outs).push(b);a=b;fa=fb;
+      }
+      return [ins,outs];
+    }
+    for(let j=0;j<4;j++){
+      if(inside.length<3)break;
+      const [ax,ay,ac]=j<3?signs[j]:[cx,cy,cz];
+      let hasInside=false,hasOutside=false;
+      for(let k=0;k<inside.length;k++){
+        const q=inside[k],z=ax*q.x+ay*q.y+ac;
+        if(z>=-1e-10)hasInside=true;
+        if(z<=1e-10)hasOutside=true;
+        if(hasInside&&hasOutside)break;
+      }
+      if(!hasInside){if(Math.abs(area(inside))>minArea)out.push(inside);return out;}
+      if(!hasOutside)continue;
+      const [ins,outs]=split(inside,ax,ay,ac);
+      if(outs.length>=3&&Math.abs(area(outs))>minArea)out.push(outs);
+      inside=ins;
+    }
+    return out;
+  }
+
 function subtractPolygon(subject,subjectPlane,occluder,{epsilon=1e-8,minArea=1e-6,depthKey='d'}={}){
   if(subject.length<3)return [];
+  if(depthKey==='inv' && subjectPlane && (occluder.plane||occluder.pl) &&
+    subject.every(p=>Number.isFinite(p.inv)&&Number.isFinite(p.light)) && occluder.pts.length===3){
+    return fastSubtractPerspective(subject,subjectPlane,occluder,epsilon,minArea);
+  }
   const nearPlane=occluder.plane||occluder.pl;
   if(nearPlane&&subjectPlane){
     const dx=nearPlane[0]-subjectPlane[0],dy=nearPlane[1]-subjectPlane[1],dz=nearPlane[2]-subjectPlane[2]-epsilon;
