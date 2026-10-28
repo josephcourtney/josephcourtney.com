@@ -2643,10 +2643,80 @@ requestAnimationFrame(frame);
     const t3=performance.now(),alpha=frames<8?.4:.09;
     projAvg+=(t1-t0-projAvg)*alpha;buildAvg+=(t2-t1-buildAvg)*alpha;domAvg+=(t3-t2-domAvg)*alpha;cpuAvg+=(t3-t0-cpuAvg)*alpha;dirty=false;
   };
+  // Keep the SVG authoritative while constructing its paths off the UI thread.
+  // One in-flight render at a time; newer camera poses replace the pending pose.
+  const synchronousRender=render;
+  let geometryWorker=null,workerUsable=false,workerBusy=false,meshVersion=0;
+  let previousMesh=null,readyVersion=0,lastRevision=0,pendingFrame=null;
+  function submitFrame(request){
+    if(!geometryWorker||!workerUsable||workerBusy||readyVersion!==meshVersion)return;
+    workerBusy=true;
+    geometryWorker.postMessage(request);
+  }
+  function buildRequest(){
+    return {type:'frame',version:meshVersion,revision:++lastRevision,
+      camera:{yaw:camera.yaw,pitch:camera.pitch,zoom:camera.zoom},
+      contours,wire,showInternal,showSuggestive};
+  }
+  function fallback(reason){
+    if(geometryWorker){geometryWorker.terminate();geometryWorker=null;}
+    workerUsable=false;workerBusy=false;pendingFrame=null;readyVersion=0;
+    if(reason)console.warn('SVG geometry worker unavailable; using synchronous renderer:',reason);
+    dirty=true;
+  }
+  function workerRender(){
+    if(!selected)return;
+    if(window.__showMesh===false)return;
+    if(!geometryWorker||!workerUsable){synchronousRender();return;}
+    if(previousMesh!==selected){
+      previousMesh=selected;readyVersion=0;meshVersion++;pendingFrame=null;
+      geometryWorker.postMessage({type:'mesh',version:meshVersion,mesh:selected,family:currentFamily});
+    }
+    pendingFrame=buildRequest();
+    if(!workerBusy && readyVersion===meshVersion){const req=pendingFrame;pendingFrame=null;submitFrame(req);}
+    dirty=false;
+  }
+  try{
+    geometryWorker=new Worker('/mechanical-illustration/shared/mesh-render-worker.js?v=1');
+    geometryWorker.onmessage=e=>{
+      const msg=e.data;
+      if(msg.type==='mesh-ready'){
+        if(msg.version!==meshVersion)return;
+        readyVersion=msg.version;
+        if(!workerBusy&&pendingFrame){const req=pendingFrame;pendingFrame=null;submitFrame(req);}
+      }else if(msg.type==='error'){fallback(msg.stack||msg.message);synchronousRender();}
+      else if(msg.type==='frame'){
+        workerBusy=false;
+        if(msg.version===meshVersion){
+          const t=performance.now();
+          updated=0;
+          for(let j=0;j<4;j++){
+            const p=paint[0][j],d=msg.paths[j];
+            if(p.getAttribute('d')!==d){p.setAttribute('d',d);updated++;}
+          }
+          for(const [el,d] of [[silhouettes,msg.outlines],[creases,msg.creases],
+                   [suggestive,msg.form],[wireDebug,msg.wire]]){
+            if(el.getAttribute('d')!==d){el.setAttribute('d',d);updated++;}
+          }
+          visible=msg.visible;
+          const delta=performance.now()-t,alpha=frames<8?.4:.09;
+          projAvg+=(msg.projectionMs-projAvg)*alpha;
+          buildAvg+=(msg.geometryMs-buildAvg)*alpha;
+          domAvg+=(delta-domAvg)*alpha;
+          cpuAvg+=(msg.totalMs+delta-cpuAvg)*alpha;
+        }
+        if(pendingFrame&&readyVersion===meshVersion){const req=pendingFrame;pendingFrame=null;submitFrame(req);}
+      }
+    };
+    geometryWorker.onerror=e=>fallback(e.message);
+    workerUsable=true;
+  }catch(e){fallback(String(e));}
+  render=workerRender;
   window.unifiedVectorRenderer={
     get scene(){return VectorIllustrationCore.meshScene(currentFamily==='housing'?'machined-housing':'stanford-bunny',selected,{label:currentFamily==='housing'?'Machined housing':'Stanford Bunny',color:'#8caea5'});},
     get geometryCore(){return VectorIllustrationCore;},
     get rendererVersion(){return VectorIllustrationCore.version;},
+    get workerMode(){return geometryWorker&&workerUsable?'worker':'synchronous';},
     get sceneType(){return currentFamily;},
     get selectedMesh(){return selected;},
     get camera(){return {...camera};},
