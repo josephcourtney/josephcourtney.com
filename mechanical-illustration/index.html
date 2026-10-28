@@ -1518,14 +1518,39 @@ function updateInteractiveHandles(key){
  const caption=controls.querySelector('.target-caption');if(caption){caption.setAttribute('x',fmt(target.x+15));caption.setAttribute('y',fmt(target.y-12));}
  const crank=controls.querySelector('.crank-grip');if(crank){crank.setAttribute('cx',fmt(pin.x));crank.setAttribute('cy',fmt(pin.y));}
 }
-let rasterQueued=false,rasterLast=0,rasterTimer=null;
+// The independent raster reference is scheduled from pose changes, regardless
+// of whether the illustrated motion preview currently covers either SVG view.
+// It must not be tied to worker completion or the preview's visibility state.
+let rasterQueued=false,rasterLast=0,rasterTimer=null,rasterFrames=0,rasterLastPose='',rasterDrawMs=0;
+function rasterCamera(){
+ // On touch devices the reference uses the same 3D geometry and camera but
+ // half the pixel dimensions. This reduces Canvas2D's per-pixel CPU cost.
+ return mobileDevice&&!renderer.ready
+   ?makeCamera(state.az,state.el,V(.24,0,.76),state.zoom*.5,395,255)
+   :viewCfg.overview();
+}
 function scheduleRaster(){
- if(rasterQueued)return;rasterQueued=true;
- const delay=Math.max(0,110-(performance.now()-rasterLast));
- rasterTimer=setTimeout(()=>requestAnimationFrame(()=>{rasterQueued=false;rasterLast=performance.now();
-   if(!asyncEnabled||livePreview.enabled)return;try{renderer.draw(scene,viewCfg.overview(),state.ghost);}catch(e){console.error(e);}
+ if(!renderer||!scene)return;
+ if(rasterQueued)return;
+ rasterQueued=true;
+ const interval=mobileDevice?170:110;
+ const delay=Math.max(0,interval-(performance.now()-rasterLast));
+ rasterTimer=setTimeout(()=>requestAnimationFrame(()=>{
+   rasterQueued=false;
+   if(!renderer||!scene)return;
+   try{
+     // Only the conventional raster reference is drawn here; the temporary
+     // illustrated preview has its own independently scheduled canvas.
+     const t0=performance.now();
+     renderer.draw(scene,rasterCamera(),state.ghost);
+     rasterDrawMs=performance.now()-t0;
+     rasterLast=performance.now();
+     rasterFrames++;
+     rasterLastPose=[state.theta,...state.armQ,state.az,state.el,state.zoom,state.ghost].join('|');
+   }catch(e){console.error('Raster reference update:',e);}
  }),delay);
 }
+
 function refreshAsync(){
  const t0=performance.now();kinematics=evaluate();scene=flatten(sceneTree(state,kinematics));
  if((drag||state.play)&&asyncEnabled)showLivePreview();
@@ -1542,7 +1567,7 @@ function refreshAsync(){
    }
    updateInteractiveHandles(key);
  }
- if(!livePreview.enabled)scheduleRaster();
+ scheduleRaster();
  stopLivePreviewWhenCurrent();
  $('loopError').textContent=kinematics.four.residual.toExponential(1);
  $('ikError').textContent=kinematics.arm.error.toFixed(4);
@@ -1582,6 +1607,7 @@ function disableAsyncAndFallback(reason){
 function refreshMobilePreview(){
  kinematics=evaluate();scene=flatten(sceneTree(state,kinematics));
  showLivePreview();drawLivePreview();
+ scheduleRaster();
  $('loopError').textContent=kinematics.four.residual.toExponential(1);
  $('ikError').textContent=kinematics.arm.error.toFixed(4);
  $('thetaValue').textContent=state.theta.toFixed(0)+'°';
@@ -1678,6 +1704,8 @@ function tick(t){if(!state.play)return;
 }
 function downloadText(data,name,type){const blob=new Blob([data],{type}),url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download=name;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
 function attachAsyncAPI(){if(!window.demo)window.demo={state,scene,views,kinematics,render:schedule,svg:key=>views?.[key]?.markup||'',visibilitySnapshot:validationSnapshot,glassCoverageSnapshot};
+ window.demo.getRasterStats=()=>({frames:rasterFrames,lastPose:rasterLastPose,queued:rasterQueued,canvasWidth:renderer?.canvas?.width,canvasHeight:renderer?.canvas?.height,mode:renderer?.ready?'WebGL':'Canvas2D',drawMs:rasterDrawMs});
+ window.demo.captureRaster=()=>renderer.canvas.toDataURL('image/png');
  window.demo.capturePreview=(key='overview')=>{const r=livePreview.renderers[key];if(r.ready)r.draw(scene,viewCfg[key](),state.ghost);else drawMotion2D(r,scene,viewCfg[key](),state.ghost);return r.canvas.toDataURL('image/png');};
  window.demo.getMotionStats=()=>({styledPreview:true,secondaryFramesSkipped:livePreview.skipped,active:livePreview.enabled,ready:Object.fromEntries(Object.entries(livePreview.renderers).map(([k,v])=>[k,v.ready?'WebGL':v.ctx?'Canvas2D':'none'])),frames:livePreview.frames,finishes:livePreview.finishes,frameTimes:livePreview.frameTimes.slice()});
  window.demo.getAsyncStats=()=>({enabled:asyncEnabled,cameras:Object.fromEntries(Object.entries(asyncViews).map(([k,v])=>[k,{ready:v?.ready,busy:v?.busy,desired:v?.desired?.revision,committed:v?.committed,error:v?.error,...asyncCounters[k]}]))});
