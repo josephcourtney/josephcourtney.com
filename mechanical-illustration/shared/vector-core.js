@@ -154,3 +154,121 @@ const API=Object.freeze({version:'1.0.0',area,bounds,intersects,spatialIndex,dep
 if(typeof module!=='undefined'&&module.exports)module.exports=API;
 root.VectorIllustrationCore=API;
 })(typeof self!=='undefined'?self:globalThis);
+
+
+/* Shared projected-scene and SVG back end. Both demos use this API. */
+(function(root){
+'use strict';
+const K=root.VectorIllustrationCore;
+const {area,bounds,intersects,spatialIndex,depthPlane,subtractPolygon,segmentVisibility,thresholdPolygon,joinSegments}=K;
+function visibleSurfaces(surfaces,occluders,{depthKey='d',epsilon=1e-8,minArea=1e-5,index=null,cell=64,ignore=null,candidates=null}={}){
+ const idx=index||spatialIndex(occluders,cell),out=[];let fragments=0,hidden=0,candidateTests=0;
+ for(const f of surfaces){
+  const poly=f.poly||f.projected||f.pts;
+  if(!poly||poly.length<3){out.push({...f,fragments:[]});hidden++;continue;}
+  const bb=f.bb||bounds(poly),plane=f.plane||f.pl||depthPlane(poly,depthKey);
+  if(!plane){out.push({...f,fragments:[]});hidden++;continue;}
+  let pieces=[poly];
+  const other=(candidates?candidates(f,idx):idx.query(bb)).filter(o=>
+    !(ignore&&ignore(f,o)) && !(o.id===f.id&&o.owner===f.owner) &&
+    !(o.source===f.id&&o.owner===f.owner) && intersects(bb,o.bb||bounds(o.pts)) &&
+    (o.maxDepth??Infinity)>(f.minDepth??-Infinity));
+  candidateTests+=other.length;
+  for(const o of other){
+   const next=[],ob=o.bb||bounds(o.pts);
+   for(const part of pieces){
+    if(!intersects(bounds(part),ob)){next.push(part);continue;}
+    next.push(...subtractPolygon(part,plane,o,{depthKey,epsilon,minArea}));
+   }
+   pieces=next;if(!pieces.length)break;
+  }
+  out.push({...f,fragments:pieces});fragments+=pieces.length;if(!pieces.length)hidden++;
+ }
+ return {surfaces:out,index:idx,fragments,hidden,candidateTests};
+}
+function visibleFeatures(features,index,{depthKey='d',epsilon=1e-8,minLength=1.6,ignore=null}={}){
+ const out=[];
+ for(const f of features){
+  const pts=f.points||f.projected||f.pts,vis=[],hid=[];
+  for(let i=1;i<(pts?.length||0);i++){
+   const a=pts[i-1],b=pts[i],r=segmentVisibility(a,b,index.query(bounds([a,b])),{
+    depthKey,epsilon,ignore:o=>(o.source===f.id&&o.owner===f.owner)||
+    f.adjacentIds?.includes(o.id)||(ignore&&ignore(f,o))
+   });
+   vis.push(...r.visible);hid.push(...r.hidden);
+  }
+  out.push({...f,visible:joinSegments(vis,{minLength}),hidden:joinSegments(hid,{minLength})});
+ }
+ return out;
+}
+function renderProjectedScene(scene,{depthKey='d',epsilon=1e-8,minArea=1e-5,minLineLength=1.6,index=null,cell=64,ignoreFace=null,ignoreFeature=null,faceCandidates=null}={}){
+ const surfaces=scene.surfaces||(scene.parts||[]).flatMap(p=>(p.surfaces||p.faces||[]).map(f=>({...f,owner:f.owner??p.id})));
+ const features=scene.features||(scene.parts||[]).flatMap(p=>(p.features||[]).map(f=>({...f,owner:f.owner??p.id})));
+ const raw=scene.occluders||surfaces.map(f=>{const pts=f.poly||f.projected||f.pts;return {id:f.id,owner:f.owner,source:f.id,pts,plane:f.plane||f.pl||depthPlane(pts,depthKey),bb:f.bb||bounds(pts)};}).filter(o=>o.plane&&o.pts?.length>=3);
+ const occluders=raw.map(o=>o.bb?o:{...o,bb:bounds(o.pts)}),idx=index||spatialIndex(occluders,cell);
+ const faces=visibleSurfaces(surfaces,occluders,{depthKey,epsilon,minArea,index:idx,ignore:ignoreFace,candidates:faceCandidates});
+ const lines=visibleFeatures(features,idx,{depthKey,epsilon,minLength:minLineLength,ignore:ignoreFeature});
+ const byOwner=new Map(),linesByOwner=new Map();
+ for(const f of faces.surfaces){if(!byOwner.has(f.owner))byOwner.set(f.owner,[]);byOwner.get(f.owner).push(f);}
+ for(const f of lines){if(!linesByOwner.has(f.owner))linesByOwner.set(f.owner,[]);linesByOwner.get(f.owner).push(f);}
+ return {faces:faces.surfaces,features:lines,byOwner,linesByOwner,occluders,index:idx,
+  stats:{fragments:faces.fragments,hidden:faces.hidden,candidateTests:faces.candidateTests,visibleLines:lines.reduce((n,f)=>n+f.visible.length,0)}};
+}
+function pathData(points,{closed=true,precision=3}={}){
+ if(!points?.length)return '';
+ const fmt=n=>String(Number(n.toFixed(precision)));
+ return 'M'+points.map((p,i)=>(i?'L':'')+fmt(p.x)+' '+fmt(p.y)).join('')+(closed?'Z':'');
+}
+function mergedFillPath(polygons,{precision=3}={}){
+ if(!polygons?.length)return {d:'',boundaryEdges:0,removedEdges:0,subpaths:0};
+ if(polygons.length===1)return {d:pathData(polygons[0],{precision}),boundaryEdges:polygons[0].length,removedEdges:0,subpaths:1};
+ const oriented=polygons.map(p=>area(p)<0?p.slice().reverse():p);
+ const fallback=()=>({d:oriented.map(p=>pathData(p,{precision})).join(' '),boundaryEdges:oriented.reduce((s,p)=>s+p.length,0),removedEdges:0,subpaths:oriented.length});
+ const fmt=n=>String(Number(n.toFixed(precision))),key=p=>fmt(p.x)+','+fmt(p.y),edges=new Map();let count=0,removed=0;
+ for(const poly of oriented)for(let i=0;i<poly.length;i++){
+  const a=poly[i],b=poly[(i+1)%poly.length],ka=key(a),kb=key(b);if(ka===kb)continue;
+  const reverse=edges.get(kb+'>'+ka),own=ka+'>'+kb;
+  if(reverse?.length){reverse.pop();if(!reverse.length)edges.delete(kb+'>'+ka);removed+=2;}
+  else {if(!edges.has(own))edges.set(own,[]);edges.get(own).push([a,b,ka,kb]);}
+  count++;
+ }
+ const outs=new Map(),ins=new Map();
+ for(const list of edges.values())for(const edge of list){
+  if(outs.has(edge[2]))return fallback();
+  outs.set(edge[2],edge);ins.set(edge[3],(ins.get(edge[3])||0)+1);
+ }
+ for(const k of outs.keys())if(ins.get(k)!==1)return fallback();
+ if(!outs.size)return fallback();
+ const rings=[],unused=new Set(outs.keys());
+ while(unused.size){
+  const start=unused.values().next().value,loop=[];let k=start;
+  do {if(!unused.has(k))return fallback();unused.delete(k);const e=outs.get(k);if(!e)return fallback();loop.push(e[0]);k=e[3];}
+  while(k!==start&&loop.length<=count);
+  if(k!==start||loop.length<3)return fallback();rings.push(loop);
+ }
+ return {d:rings.map(p=>pathData(p,{precision})).join(' '),boundaryEdges:count-removed,removedEdges:removed,subpaths:rings.length};
+}
+function compileSVG(scene,{width=800,height=610,style='',paper='#f9f7ef',title='Vector illustration',precision=2,tonalLevels=[],includeHidden=false}={}){
+ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ const parts=scene.parts||[...new Set(scene.faces.map(f=>f.owner))].map(id=>({id,color:'#a9c3bd'}));
+ let svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'" class="drawing"><title>'+esc(title)+'</title><style>'+style+'</style><rect class="paper" width="'+width+'" height="'+height+'" fill="'+paper+'"/>';
+ for(const part of parts){
+  const faces=scene.byOwner?.get(part.id)||[],lines=scene.linesByOwner?.get(part.id)||[];
+  svg+='<g class="part" data-part="'+esc(part.id)+'" fill="'+esc(part.color||'#a9c3bd')+'"><title>'+esc(part.label||part.id)+'</title>';
+  for(const f of faces){const d=mergedFillPath(f.fragments,{precision}).d;if(d)svg+='<path class="surface" data-source-surface="'+esc(f.id)+'" d="'+d+'"/>';}
+  for(const [j,level] of tonalLevels.entries()){
+   const regions=[];for(const f of faces)for(const frag of f.fragments){const poly=thresholdPolygon(frag,level);if(poly.length>=3&&Math.abs(area(poly))>1e-4)regions.push(poly);}
+   if(regions.length)svg+='<path class="tone tone-'+j+'" d="'+mergedFillPath(regions,{precision}).d+'"/>';
+  }
+  for(const f of lines){
+   for(const p of f.visible)svg+='<path class="feature '+esc(f.kind||'crease')+'" data-source-feature="'+esc(f.id||'')+'" fill="none" d="'+pathData(p,{closed:false,precision})+'"/>';
+   if(includeHidden)for(const p of f.hidden)svg+='<path class="feature hidden" fill="none" d="'+pathData(p,{closed:false,precision})+'"/>';
+  }
+  svg+='</g>';
+ }
+ return svg+'</svg>';
+}
+root.VectorIllustrationCore=Object.freeze({...K,version:'2.1.0',visibleSurfaces,visibleFeatures,renderProjectedScene,pathData,mergedFillPath,compileSVG});
+})(typeof self!=='undefined'?self:globalThis);
+
+if(typeof module!=='undefined'&&module.exports)module.exports=globalThis.VectorIllustrationCore;

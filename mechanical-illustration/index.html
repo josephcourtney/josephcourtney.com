@@ -232,7 +232,7 @@
     <p class="footnote">The renderer reuses unchanged geometry and SVG nodes while keeping full editable export. All visible SVG fragments retain their originating part and surface identifiers; projected unsplit surfaces are preserved in <code>&lt;defs&gt;</code>. The target and crank grip are explanatory overlay handles, not physical parts. This is a kinematic illustration, not a precision engineering simulator.</p>
   </section>
 </main>
-<script src="/mechanical-illustration/shared/vector-core.js"></script>
+<script src="/mechanical-illustration/shared/vector-core.js?v=2"></script>
 <script>/* Kinematics, part hierarchy and semantic SVG share the VectorIllustrationCore kernel. */
 (()=>{
 'use strict';
@@ -562,23 +562,19 @@ function resolveFaces(scene,camera,ghostPost,cache=null){const {rendered,occlude
      for(const f of old.faces){total+=f.fragments.length;if(!f.fragments.length)hidden++;}
    }
  }}
- for(const f of rendered){
-   if(reused.has(f.owner))continue;let fragments=[f.projected.map(p=>({x:p.x,y:p.y}))];
-   const candidates=(ghostPost&&f.owner==='probe-block'?glassIndex:index).query(f.bb).filter(o=>
-     !(o.owner===f.owner&&o.source===f.id)&&
-     !(f.convex&&o.owner===f.owner&&f.owner!=='probe-block')&&
-     o.maxD>f.minD+DEPTH_EPS&&overlap(o.bb,f.bb)&&
-     // Difference of two projected planar depth functions is affine. If this
-     // triangle is behind every vertex of the face, it cannot occlude any of it.
-     f.projected.some(p=>depth(p,o.pl)>depth(p,f.pl)+DEPTH_EPS));
-   for(const o of candidates){
-     const cuts=cuttingFunctions(o,f.pl),next=[];
-     for(const poly of fragments){if(!overlap(bbox(poly),o.bb)){next.push(poly);continue;}
-       next.push(...subtractOccluder(poly,cuts));
-     }
-     fragments=next;if(fragments.length===0)break;
-   }
-   if(fragments.length===0)hidden++;
+ // The authoritative projected-scene surface resolver is shared by both viewers.
+ const targets=rendered.filter(f=>!reused.has(f.owner)).map(f=>({...f,poly:f.projected,plane:f.pl,minDepth:f.minD}));
+ const computed=VectorIllustrationCore.visibleSurfaces(targets,opaque,{
+   index,depthKey:'d',epsilon:DEPTH_EPS,minArea:4e-5,
+   candidates:(f,baseIndex)=>(ghostPost&&f.owner==='probe-block'?glassIndex:baseIndex).query(f.bb)
+     .filter(o=>o.maxD>f.minD+DEPTH_EPS&&overlap(o.bb,f.bb)&&
+       f.projected.some(p=>depth(p,o.pl)>depth(p,f.pl)+DEPTH_EPS)),
+   ignore:(f,o)=>(o.owner===f.owner&&o.source===f.id)||
+      (f.convex&&o.owner===f.owner&&f.owner!=='probe-block')
+ });
+ for(const f of computed.surfaces){
+   const fragments=f.fragments.map(poly=>poly.map(p=>({x:p.x,y:p.y})));
+   if(!fragments.length)hidden++;
    total+=fragments.length;
    byOwner.get(f.owner).push({...f,fragments});
  }
@@ -597,17 +593,13 @@ function splitInterval(t0,t1,fA,fB){let l=t0,h=t1;
 function hiddenInterval(a,b,tri){
  return VectorIllustrationCore.occludedSegmentInterval(a,b,tri,{depthKey:'d',epsilon:DEPTH_EPS});
 }
-function lineVisibility(a,b,occluders,owner,featureId){const bb=bbox([a,b]),minD=Math.min(a.d,b.d);
- const candidates=(Array.isArray(occluders)?occluders:occluders.query(bb)).filter(t=>!(t.owner===owner&&t.source===featureId)&&t.maxD>minD+DEPTH_EPS&&overlap(t.bb,bb));
- const blocked=[];
- for(const tri of candidates){let h=hiddenInterval(a,b,tri);if(h)blocked.push(h);}
- blocked.sort((a,b)=>a[0]-b[0]);
- const merged=[];for(const [lo,hi] of blocked){if(merged.length&&lo<=merged.at(-1)[1]+1e-7)merged.at(-1)[1]=Math.max(hi,merged.at(-1)[1]);else merged.push([lo,hi]);}
- const vis=[],hid=[];let t=0;
- for(const [lo,hi] of merged){if(lo>t+1e-6)vis.push([t,lo]);if(hi>lo+1e-6)hid.push([lo,hi]);t=hi;}
- if(t<1-1e-6)vis.push([t,1]);
- const at=q=>({x:a.x+(b.x-a.x)*q,y:a.y+(b.y-a.y)*q});
- return {vis:vis.map(([l,h])=>[at(l),at(h)]),hid:hid.map(([l,h])=>[at(l),at(h)])};
+function lineVisibility(a,b,occluders,owner,featureId){
+ const bb=bbox([a,b]),minD=Math.min(a.d,b.d);
+ const candidates=(Array.isArray(occluders)?occluders:occluders.query(bb))
+   .filter(t=>!(t.owner===owner&&t.source===featureId)&&t.maxD>minD+DEPTH_EPS&&overlap(t.bb,bb));
+ const clipped=VectorIllustrationCore.segmentVisibility(a,b,candidates,{depthKey:'d',epsilon:DEPTH_EPS});
+ const xy=segments=>segments.map(seg=>seg.map(p=>({x:p.x,y:p.y})));
+ return {vis:xy(clipped.visible),hid:xy(clipped.hidden)};
 }
 function analyticFeature(feature,camera,part){
  if(feature.isRing){const {cx,cy,z,r}=feature;const N=144;
@@ -770,41 +762,7 @@ function sourceDefs(scene,camera,prefix,cache=null){
 // union without internal facet seams or overdraw. Whenever internal edges match
 // exactly, remove them and reconstruct boundary-only loops to reduce path data.
 // This does NOT merge different semantic owners or modify the surface-ID pass.
-function mergedFillPath(polygons){
- if(!polygons.length)return {d:'',boundaryEdges:0,removedEdges:0,subpaths:0};
- if(polygons.length===1)return {d:path(polygons[0]),boundaryEdges:polygons[0].length,removedEdges:0,subpaths:1};
- const oriented=polygons.map(poly=>polygonArea(poly)<0?poly.slice().reverse():poly);
- const fallback=()=>({d:oriented.map(poly=>path(poly)).join(' '),boundaryEdges:oriented.reduce((s,p)=>s+p.length,0),removedEdges:0,subpaths:oriented.length});
- const key=p=>fmt(p.x)+','+fmt(p.y);
- const edges=new Map();let count=0,removed=0;
- for(const poly of oriented){for(let i=0;i<poly.length;i++){
-   const a=poly[i],b=poly[(i+1)%poly.length],ka=key(a),kb=key(b);
-   if(ka===kb)continue;
-   const opposite=kb+'>'+ka,own=ka+'>'+kb;
-   const reverse=edges.get(opposite);
-   if(reverse?.length){reverse.pop();if(!reverse.length)edges.delete(opposite);removed+=2;}
-   else {if(!edges.has(own))edges.set(own,[]);edges.get(own).push([a,b,ka,kb]);}
-   count++;
- }}
- const outs=new Map(), indegrees=new Map();
- for(const list of edges.values())for(const edge of list){
-   const [, ,ka,kb]=edge;
-   if(outs.has(ka))return fallback(); // ambiguous junction; do not guess topology
-   outs.set(ka,edge);indegrees.set(kb,(indegrees.get(kb)||0)+1);
- }
- for(const k of outs.keys())if(indegrees.get(k)!==1)return fallback();
- if(!outs.size)return fallback();
- const rings=[],unused=new Set(outs.keys());
- while(unused.size){const start=unused.values().next().value,loop=[];let k=start;
-   do {if(!unused.has(k))return fallback();unused.delete(k);
-     const edge=outs.get(k);if(!edge)return fallback();
-     loop.push(edge[0]);k=edge[3];
-   }while(k!==start&&loop.length<=count);
-   if(k!==start||loop.length<3)return fallback();
-   rings.push(loop);
- }
- return {d:rings.map(poly=>path(poly)).join(' '),boundaryEdges:count-removed,removedEdges:removed,subpaths:rings.length};
-}
+function mergedFillPath(polygons){return VectorIllustrationCore.mergedFillPath(polygons,{precision:3});}
 function groupVisibleFills(part,visible){
  const groups=new Map();
  for(const f of visible){
@@ -1879,7 +1837,7 @@ function initAsyncWorkers(){
  let url;
  try {
    if(SCRIPT_SOURCE.length>10000){
-     url=URL.createObjectURL(new Blob(["importScripts("+JSON.stringify(location.origin+"/mechanical-illustration/shared/vector-core.js")+");\n",SCRIPT_SOURCE],{type:'text/javascript'}));
+     url=URL.createObjectURL(new Blob(["importScripts("+JSON.stringify(location.origin+"/mechanical-illustration/shared/vector-core.js?v=2")+");\n",SCRIPT_SOURCE],{type:'text/javascript'}));
      workerObjectURL=url;
    }else url=script?.src||'mechanism.js';
    for(const key of ['overview','detail']){
