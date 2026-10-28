@@ -3,22 +3,19 @@
 importScripts('/mechanical-illustration/shared/vector-core.js?v=2');
 const CAM_D=3.65, DEPTH_LAYERS=1;
 let selected=null, contours=true, wire=false, showInternal=true, showSuggestive=false;
-let camera={yaw:0,pitch:-.12,zoom:1},visible=0;
+let camera={yaw:0,pitch:-.12,zoom:1},visible=0,currentFamily='bunny';
 const fmt=n=>Math.round(n*100)/100;
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const cross=(a,b,c)=>(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
 const hypo=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   function indexTriangles(tris,cell=54){return VectorIllustrationCore.spatialIndex(tris,cell);}
   function bounding(a,b,c){return [Math.min(a.x,b.x,c.x),Math.min(a.y,b.y,c.y),Math.max(a.x,b.x,c.x),Math.max(a.y,b.y,c.y)];}
-  function pathpoly(points){return 'M'+points.map(p=>`${fmt(p.x)},${fmt(p.y)}`).join('L')+'Z';}
+  
   // Interpolate isoline crossing in 3D and reproject via perspective-correct screen t.
-  function thresholdPoly(poly,level){return VectorIllustrationCore.thresholdPolygon(poly,level,'light','inv');}
+  
   // Segment clipping against triangle's projected half-planes, then its
   // affine inverse-depth plane. The result is an exact parametric interval.
-  function blockedInterval(a,b,tri,adjacent){
-    if(tri.id===adjacent[0]||tri.id===adjacent[1])return null;
-    return VectorIllustrationCore.occludedSegmentInterval(a,b,tri,{depthKey:'inv',epsilon:0.00015});
-  }
+  
   function clipSegment(a,b,adj,index){
     const bb=[Math.min(a.x,b.x)-.01,Math.min(a.y,b.y)-.01,Math.max(a.x,b.x)+.01,Math.max(a.y,b.y)+.01];
     return VectorIllustrationCore.segmentVisibility(a,b,index.query(bb),{
@@ -62,79 +59,9 @@ const hypo=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
     let area=0;for(let i=0;i<poly.length;i++){const p=poly[i],q=poly[(i+1)%poly.length];area+=p.x*q.y-q.x*p.y;}
     return Math.abs(area)*.5;
   }
-  function polygonBounds(poly){
-    let l=Infinity,t=Infinity,r=-Infinity,b=-Infinity;
-    for(const p of poly){l=Math.min(l,p.x);r=Math.max(r,p.x);t=Math.min(t,p.y);b=Math.max(b,p.y);}
-    return [l,t,r,b];
-  }
-  function polyHalfplane(poly,equation,inside=true){
-    const out=[];
-    for(let i=0;i<poly.length;i++){
-      const a=poly[i],b=poly[(i+1)%poly.length],fa=equation(a),fb=equation(b);
-      const ina=inside?fa>=-1e-10:fa<=1e-10;
-      const inb=inside?fb>=-1e-10:fb<=1e-10;
-      if(ina)out.push(a);
-      if(ina!==inb){
-        const t=clamp(fa/(fa-fb),0,1);
-        out.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,
-          inv:a.inv+(b.inv-a.inv)*t,light:a.light+(b.light-a.light)*t});
-      }
-    }
-    return out;
-  }
-  // Geometry-native, allocation-conscious convex subtraction. Screen-space
-  // separation and affine depth rejection are evaluated before any splitting.
-  function subtractOccluded(subject,sourcePlane,occluder){
-    const eps=.00007,minArea=.005,p=occluder.pts,pl=occluder.plane;
-    const cx=pl[0]-sourcePlane[0],cy=pl[1]-sourcePlane[1],cz=pl[2]-sourcePlane[2]-eps;
-    let near=false;
-    for(let i=0;i<subject.length;i++){
-      const q=subject[i];if(cx*q.x+cy*q.y+cz>0){near=true;break;}
-    }
-    if(!near)return [subject];
-    const signs=occluder.edgeEquations;
-    // A separating edge proves no visible region is affected.
-    for(let i=0;i<3;i++){
-      const [ax,ay,ac]=signs[i];let anyInside=false;
-      for(let k=0;k<subject.length;k++){
-        const q=subject[k];if(ax*q.x+ay*q.y+ac>=-1e-10){anyInside=true;break;}
-      }
-      if(!anyInside)return [subject];
-    }
-    let inside=subject;
-    const out=[];
-    function split(poly,ax,ay,ac){
-      const ins=[],outs=[];let a=poly[poly.length-1],fa=ax*a.x+ay*a.y+ac;
-      for(let i=0;i<poly.length;i++){
-        const b=poly[i],fb=ax*b.x+ay*b.y+ac,ia=fa>=-1e-10,ib=fb>=-1e-10;
-        if(ia!==ib){
-          const t=Math.max(0,Math.min(1,fa/(fa-fb)));
-          const v={x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,
-                   inv:a.inv+(b.inv-a.inv)*t,light:a.light+(b.light-a.light)*t};
-          ins.push(v);outs.push(v);
-        }
-        (ib?ins:outs).push(b);a=b;fa=fb;
-      }
-      return [ins,outs];
-    }
-    for(let j=0;j<4;j++){
-      if(inside.length<3)break;
-      const [ax,ay,ac]=j<3?signs[j]:[cx,cy,cz];
-      let hasInside=false,hasOutside=false;
-      for(let k=0;k<inside.length;k++){
-        const q=inside[k],z=ax*q.x+ay*q.y+ac;
-        if(z>=-1e-10)hasInside=true;
-        if(z<=1e-10)hasOutside=true;
-        if(hasInside&&hasOutside)break;
-      }
-      if(!hasInside){if(polygonArea(inside)>minArea)out.push(inside);return out;}
-      if(!hasOutside)continue;
-      const [ins,outs]=split(inside,ax,ay,ac);
-      if(outs.length>=3&&polygonArea(outs)>minArea)out.push(outs);
-      inside=ins;
-    }
-    return out;
-  }
+  
+  
+  
   function coplanarTjunction(edge,mesh){
     if(!mesh.angular||edge.b>=0)return false;
     const a=mesh.f[edge.a*3],b=mesh.f[edge.a*3+1],c=mesh.f[edge.a*3+2];
@@ -199,24 +126,14 @@ function buildFrame(){
       allFaces[j]=tri;
       if(!front)continue;
       tri.plane=faceInvPlane(pa,pb,pc);
-      const w=Math.sign(signed)||1;
-      tri.edgeEquations=[];
-      for(let k=0;k<3;k++){
-        const q=tri.pts[k],r=tri.pts[(k+1)%3];
-        const ax=w*(q.y-r.y),ay=w*(r.x-q.x);
-        tri.edgeEquations.push([ax,ay,-ax*q.x-ay*q.y]);
-      }
-      tri.maxInv=Math.max(pa.inv,pb.inv,pc.inv);
       triData.push(tri);
     }
     visible=triData.length;
     const index=indexTriangles(triData,m.angular?64:20);
-    // Full geometric hidden-surface removal: subtract the intersection with
-    // every nearer projected triangle, using both 2D half-planes and the
-    // analytically affine inverse-depth comparison. Never sample pixels.
-    for(const tri of triData){
-      const [a,b,c]=tri.ids;
-      const pa=pts[a],pb=pts[b],pc=pts[c];
+    // The shared scene renderer is authoritative for triangle visibility.
+    // Frontend responsibility ends at projection and surface material values.
+    const sharedSurfaces=triData.map(tri=>{
+      const [a,b,c]=tri.ids,pa=pts[a],pb=pts[b],pc=pts[c];
       const poly=[{...pa,light:lightV[a]},{...pb,light:lightV[b]},{...pc,light:lightV[c]}];
       if(m.angular){
         const k=tri.id*3,n0=m.normals[k],n1=m.normals[k+1],n2=m.normals[k+2];
@@ -224,72 +141,62 @@ function buildFrame(){
         const L=.22+.78*Math.max(0,-.39*NX+.65*NY+.65*NZZ);
         for(const p of poly)p.light=L;
       }
-      let fragments=[poly];
-      const candidates=index.query(tri.bb).filter(o=>o.id!==tri.id &&
-        !(o.bb[0]>tri.bb[2] || o.bb[2]<tri.bb[0] || o.bb[1]>tri.bb[3] || o.bb[3]<tri.bb[1]) &&
-        o.maxInv>Math.min(pa.inv,pb.inv,pc.inv)+0.00007);
-      // Nearer occluders first typically makes fragment rejection faster.
-      candidates.sort((x,y)=> y.maxInv-x.maxInv);
-      for(const occluder of candidates){
-        const clipped=[];
-        for(const fragment of fragments){
-          if(!fragment.length)continue;
-          const [loX,loY,hiX,hiY]=polygonBounds(fragment),bb=occluder.bb;
-          if(hiX<bb[0] || loX>bb[2] || hiY<bb[1] || loY>bb[3]){clipped.push(fragment);continue;}
-          clipped.push(...subtractOccluded(fragment,tri.plane,occluder));
-        }
-        fragments=clipped;
-        if(!fragments.length)break;
-      }
-      for(const visiblePoly of fragments){
-        if(visiblePoly.length<3 || polygonArea(visiblePoly)<.018)continue;
-        buckets[0][0].push(pathpoly(visiblePoly));
-        for(let level=1;level<=3;level++){
-          const threshold=[0,.74,.55,.37][level],shade=thresholdPoly(visiblePoly,threshold);
-          if(shade.length>=3&&polygonArea(shade)>.018)buckets[0][level].push(pathpoly(shade));
-        }
-      }
-    }
-    // Mesh topology defines real silhouettes and creases; each segment is clipped
-    // exactly against projected triangles and their inverse-depth planes.
-    const contourPieces=[],creasePieces=[],wirePieces=[];
+      return {id:tri.id,owner:currentFamily,poly,plane:tri.plane,bb:tri.bb,minDepth:Math.min(pa.inv,pb.inv,pc.inv)};
+    });
+    // Mesh topology is the authoritative feature source for both models.
+    const edgeFeatures=[];
     const creaseCos=Math.cos((m.angular?33:63)*Math.PI/180);
     for(const e of m.edges){
       const p=pts[e.p],q=pts[e.q],A=allFaces[e.a],B=e.b>=0?allFaces[e.b]:null;
       if(coplanarTjunction(e,m))continue;
-      const silhouette=!B || A.front!==B.front;
+      const silhouette=!B||A.front!==B.front;
       let crease=false;
-      if(B && A.front && B.front){
-        const a=e.a*3,b=e.b*3,dd=m.normals[a]*m.normals[b]+m.normals[a+1]*m.normals[b+1]+m.normals[a+2]*m.normals[b+2];
+      if(B&&A.front&&B.front){
+        const a=e.a*3,b=e.b*3;
+        const dd=m.normals[a]*m.normals[b]+m.normals[a+1]*m.normals[b+1]+m.normals[a+2]*m.normals[b+2];
         crease=dd<creaseCos;
       }
       if(!silhouette&&!crease&&!wire)continue;
-      const segments=clipSegment(p,q,[e.a,e.b],index);
-      if(silhouette){
-        if(contours)for(const seg of segments){
-          if(m.angular || describesOcclusion(seg[0],seg[1],index))contourPieces.push(seg);
-        }
+      edgeFeatures.push({id:'e'+e.p+'-'+e.q,owner:currentFamily,kind:silhouette?'silhouette':crease?'crease':'wire',
+        points:[p,q],adjacentIds:[e.a,e.b],silhouette,crease});
+    }
+    const projectedFrame=VectorIllustrationCore.renderProjectedScene({surfaces:sharedSurfaces,
+      occluders:triData.map(tri=>({...tri,maxDepth:Math.max(...tri.pts.map(p=>p.inv))})),features:edgeFeatures},
+      {depthKey:'inv',epsilon:.00007,minArea:.005,minLineLength:0,index,ignoreFace:(face,occluder)=>face.id===occluder.id});
+    for(const face of projectedFrame.faces)for(const visiblePoly of face.fragments){
+      if(visiblePoly.length<3||Math.abs(VectorIllustrationCore.area(visiblePoly))<.018)continue;
+      buckets[0][0].push(VectorIllustrationCore.pathData(visiblePoly,{precision:1}));
+      for(let level=1;level<=3;level++){
+        const threshold=[0,.74,.55,.37][level];
+        const shade=VectorIllustrationCore.thresholdPolygon(visiblePoly,threshold,'light','inv');
+        if(shade.length>=3&&Math.abs(VectorIllustrationCore.area(shade))>.018)
+          buckets[0][level].push(VectorIllustrationCore.pathData(shade,{precision:1}));
       }
-      else if(crease && showInternal)creasePieces.push(...segments);
+    }
+    // Surface and feature visibility share the same scene-render pass.
+    const contourPieces=[],creasePieces=[],wirePieces=[];
+    for(const f of projectedFrame.features){
+      const segments=[];
+      for(const poly of f.visible)for(let j=1;j<poly.length;j++)segments.push([poly[j-1],poly[j]]);
+      if(f.silhouette&&contours){
+        for(const seg of segments)if(m.angular||describesOcclusion(seg[0],seg[1],index))contourPieces.push(seg);
+      }else if(f.crease&&showInternal)creasePieces.push(...segments);
       if(wire)wirePieces.push(...segments);
     }
     let formPieces=[];
     if(!m.angular && showInternal && showSuggestive)formPieces=organicFormSegments(m,pts,normals,index,allFaces);
+
     const t2=performance.now();
-    return {
-      paths:buckets[0].map(arr=>arr.join('')),
-      outlines:joinLines(contourPieces,7.0),
-      creases:showInternal?joinLines(creasePieces,3.0):'',
-      form:joinLines(formPieces,20),
-      wire:wire?joinLines(wirePieces,1):'',
-      visible,projectionMs:t1-t0,geometryMs:t2-t1,totalMs:t2-t0
-    };
+    return {paths:buckets[0].map(a=>a.join('')),outlines:joinLines(contourPieces,7.0),
+      creases:showInternal?joinLines(creasePieces,3.0):'',form:joinLines(formPieces,20),
+      wire:wire?joinLines(wirePieces,1):'',visible,
+      projectionMs:t1-t0,geometryMs:t2-t1,totalMs:t2-t0};
 }
 let meshVersion=0;
 self.onmessage=(ev)=>{
   const msg=ev.data;
   if(msg.type==='mesh'){
-    selected=msg.mesh;meshVersion=msg.version;
+    selected=msg.mesh;meshVersion=msg.version;currentFamily=msg.family||'bunny';
     self.postMessage({type:'mesh-ready',version:meshVersion});
   } else if(msg.type==='frame' && selected && msg.version===meshVersion){
     try{
