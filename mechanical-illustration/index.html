@@ -2204,7 +2204,9 @@ function setLOD(name){
 function render(){} // Installed by the geometry-native renderer before the first animation frame.
 function metrics(){
   const fmt=n=>Number.isFinite(n)?n.toFixed(2)+' ms':'—';
-  $('fps-value').textContent=Math.round(fpsAvg)||'—';
+  $('fps-value').textContent=workerUsable
+    ? (lastSvgCommit&&performance.now()-lastSvgCommit<1200 ? (Math.round(svgFpsAvg)||'—') : '—')
+    : (Math.round(fpsAvg)||'—');
   $('total-value').textContent=cpuAvg.toFixed(1);
   $('projection-value').textContent=fmt(projAvg);
   $('paths-value').textContent=fmt(buildAvg);
@@ -2646,6 +2648,11 @@ requestAnimationFrame(frame);
   // Keep the SVG authoritative while constructing its paths off the UI thread.
   // One in-flight render at a time; newer camera poses replace the pending pose.
   const synchronousRender=render;
+  let lastSvgCommit=0,svgFpsAvg=0;
+  $('fps-value').parentElement.querySelector('.statlabel').textContent='SVG FPS';
+  // A downloaded SVG must represent the current pose, not the last completed
+  // asynchronous frame. One synchronous render on export is acceptable.
+  $('export-svg').addEventListener('click',()=>synchronousRender(),{capture:true});
   let geometryWorker=null,workerUsable=false,workerBusy=false,meshVersion=0;
   let previousMesh=null,readyVersion=0,lastRevision=0,pendingFrame=null;
   function submitFrame(request){
@@ -2689,6 +2696,11 @@ requestAnimationFrame(frame);
         workerBusy=false;
         if(msg.version===meshVersion){
           const t=performance.now();
+          if(lastSvgCommit){
+            const dt=t-lastSvgCommit;
+            if(dt>0){const inst=1000/dt;svgFpsAvg+=(inst-svgFpsAvg)*(svgFpsAvg?.20:1);}
+          }
+          lastSvgCommit=t;
           updated=0;
           for(let j=0;j<4;j++){
             const p=paint[0][j],d=msg.paths[j];
