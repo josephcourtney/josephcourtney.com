@@ -25,4 +25,22 @@ const left=[{x:0,y:0},{x:2,y:0},{x:2,y:2},{x:0,y:2}];
 const right=[{x:2,y:0},{x:4,y:0},{x:4,y:2},{x:2,y:2}];
 const joined=K.mergedFillPath([left,right]);
 assert(joined.removedEdges>=2&&joined.subpaths===1);
+// Perspective triangles must remain geometrically exact through the fast
+// affine-depth path, with lighting attributes intact for SVG tonal regions.
+const base=[
+ {x:0,y:0,inv:.3,light:.9},{x:10,y:0,inv:.3,light:.6},
+ {x:10,y:10,inv:.3,light:.2},{x:0,y:10,inv:.3,light:.7}
+];
+const pocket={
+ pts:[{x:2,y:2},{x:8,y:2},{x:5,y:8}],plane:[0,0,.7],maxDepth:.7
+};
+const visible=K.subtractPolygon(base,[0,0,.3],pocket,
+ {epsilon:.00007,minArea:1e-8,depthKey:'inv'});
+const visibleArea=visible.reduce((sum,p)=>sum+Math.abs(K.area(p)),0);
+assert(Math.abs(visibleArea-82)<1e-5,'perspective cutout area '+visibleArea);
+assert(visible.flat().every(p=>Number.isFinite(p.inv)&&Number.isFinite(p.light)));
+assert.equal(pocket._edgeEquations.length,3,'reuse occluder half-planes');
+const behind={pts:pocket.pts,plane:[0,0,.1],maxDepth:.1};
+assert.equal(K.subtractPolygon(base,[0,0,.3],behind,
+ {epsilon:.00007,minArea:1e-8,depthKey:'inv'})[0],base);
 console.log('Unified SVG renderer tests passed');
