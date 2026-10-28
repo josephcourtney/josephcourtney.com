@@ -171,7 +171,7 @@
   .top{padding-top:calc(3px + env(safe-area-inset-top,0px));padding-bottom:3px;}
 }
 </style></head>
-<body><header class="top"><div class="eyebrow">INTERACTIVE TECHNICAL STUDY · 01 / KINEMATICS</div><h1>Motion, made visible</h1><p>An incrementally rendered drawing laboratory: one closed four-bar mechanism, one spatial inverse-kinematics arm, curved geometric test features, and two independent views of the same 3D scene. Drag the blue crank pin or the rust-colored target.</p></header>
+<body><header class="top"><div class="eyebrow">INTERACTIVE TECHNICAL STUDY · 01 / KINEMATICS</div><h1>Motion, made visible</h1><p>An incrementally rendered drawing laboratory: one closed four-bar mechanism, one spatial inverse-kinematics arm, curved geometric test features, and two independent views of the same 3D scene. Drag the blue crank pin or the rust-colored target.</p></header><nav aria-label="Illustration scene navigation" style="padding:7px 32px;background:#f9f7f0;border-bottom:1px solid #d8d9ce;display:flex;flex-wrap:wrap;gap:18px;font:12px system-ui;color:#3a5e58"><span aria-current="page" style="font-weight:700">Articulated mechanism</span><a href="/mechanical-illustration/stanford-bunny/" style="color:#365d5e">Stanford Bunny / machined housing</a></nav>
 <main class="layout" data-mobile-tab="overview" data-mobile-controls="motion">
   <nav class="mobile-nav" role="tablist" aria-label="Mechanical illustration views">
     <button type="button" role="tab" id="tab-overview" data-mobile-target="overview" aria-selected="true" aria-controls="overviewSvg" tabindex="0">Assembly</button>
@@ -232,7 +232,8 @@
     <p class="footnote">The renderer reuses unchanged geometry and SVG nodes while keeping full editable export. All visible SVG fragments retain their originating part and surface identifiers; projected unsplit surfaces are preserved in <code>&lt;defs&gt;</code>. The target and crank grip are explanatory overlay handles, not physical parts. This is a kinematic illustration, not a precision engineering simulator.</p>
   </section>
 </main>
-<script>/* Kinematics and semantic vector test; no external runtime dependencies. */
+<script src="/mechanical-illustration/shared/vector-core.js"></script>
+<script>/* Kinematics, part hierarchy and semantic SVG share the VectorIllustrationCore kernel. */
 (()=>{
 'use strict';
 const WORKER_MODE=typeof document==='undefined';
@@ -516,38 +517,13 @@ function cuttingFunctions(tri,pl){const pts=tri.pts;
  .concat([p=>depth(p,tri.pl)-depth(p,pl)-DEPTH_EPS]);
 }
 function subtractOccluder(poly,cutters){
- // Preserve the existing exact half-plane construction, but avoid allocating
- // clipped polygons when the entire fragment is on one side of a cutter.
- let remain=poly,kept=[];
- for(const f of cutters){
-   if(remain.length<3)break;
-   let anyInside=false,anyOutside=false;
-   for(const p of remain){const v=f(p);if(v>=-1e-7)anyInside=true;if(v<=1e-7)anyOutside=true;
-     if(anyInside&&anyOutside)break;}
-   if(!anyInside){kept.push(remain);return kept;}
-   if(!anyOutside)continue;
-   const [inside,outside]=splitPoly(remain,f);
-   if(outside.length>=3)kept.push(outside);
-   remain=inside;
- }
- return kept;
+ return VectorIllustrationCore.subtractByCutters(poly,cutters,{minArea:4e-5,epsilon:1e-7});
 }
 // Conservative broad-phase: a projected triangle is placed into all cells touched by
 // its screen-space bounding box. Querying any polygon bounding box is exact in the
 // sense that it cannot omit a potentially intersecting triangle.
 function occluderIndex(occluders,cellSize=96){
- const cells=new Map(), key=(x,y)=>x+','+y;
- const span=bb=>[Math.floor(bb.x0/cellSize),Math.floor(bb.y0/cellSize),
-                   Math.floor(bb.x1/cellSize),Math.floor(bb.y1/cellSize)];
- occluders.forEach((tri,id)=>{const [x0,y0,x1,y1]=span(tri.bb);
-   for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++){
-     const k=key(x,y);if(!cells.has(k))cells.set(k,[]);cells.get(k).push(id);
-   }
- });
- return {all:occluders,query(bb){const [x0,y0,x1,y1]=span(bb),indices=new Set();
-   for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++)for(const i of cells.get(key(x,y))||[])indices.add(i);
-   return [...indices].sort((a,b)=>a-b).map(i=>occluders[i]);
- }};
+ return VectorIllustrationCore.spatialIndex(occluders,cellSize);
 }
 // Conservative per-owner visibility dependencies. A cached face/feature result is
 // reusable only if its own rigid transform, camera, transparency mode, and ALL
@@ -619,27 +595,7 @@ function splitInterval(t0,t1,fA,fB){let l=t0,h=t1;
  return h>l+1e-7?[l,h]:null;
 }
 function hiddenInterval(a,b,tri){
- // Parametric segment vs convex polygon, with an affine depth halfspace.
- // Numerically equivalent to splitInterval but with no per-edge closures or arrays.
- let lo=0,hi=1;
- const clip=(fa,fb)=>{
-   const df=fb-fa;
-   if(Math.abs(df)<1e-8)return fa>=0;
-   const t=-fa/df;
-   if(df>0){if(t>lo)lo=t;}else if(t<hi)hi=t;
-   return hi>lo+1e-7;
- };
- const pts=tri.pts;
- for(let i=0;i<pts.length;i++){
-   const p=pts[i],q=pts[(i+1)%pts.length],dx=q.x-p.x,dy=q.y-p.y;
-   const fa=dx*(a.y-p.y)-dy*(a.x-p.x);
-   const fb=dx*(b.y-p.y)-dy*(b.x-p.x);
-   if(!clip(fa,fb))return null;
- }
- const pl=tri.pl;
- if(!clip(pl[0]*a.x+pl[1]*a.y+pl[2]-a.d-DEPTH_EPS,
-          pl[0]*b.x+pl[1]*b.y+pl[2]-b.d-DEPTH_EPS))return null;
- return [lo,hi];
+ return VectorIllustrationCore.occludedSegmentInterval(a,b,tri,{depthKey:'d',epsilon:DEPTH_EPS});
 }
 function lineVisibility(a,b,occluders,owner,featureId){const bb=bbox([a,b]),minD=Math.min(a.d,b.d);
  const candidates=(Array.isArray(occluders)?occluders:occluders.query(bb)).filter(t=>!(t.owner===owner&&t.source===featureId)&&t.maxD>minD+DEPTH_EPS&&overlap(t.bb,bb));
@@ -1662,7 +1618,7 @@ function refresh(){workerGeneration++;for(const w of Object.values(asyncViews))i
  $('azValue').textContent=state.az.toFixed(0)+'°';$('elValue').textContent=state.el.toFixed(0)+'°';$('zoomValue').textContent=state.zoom.toFixed(0)+'×';
  const p=scene.parts.find(x=>x.id===state.selected);$('selected').textContent=p?`${p.label} · ${p.path} · ${$('overviewSvg').querySelectorAll('#part-'+p.id+' .face-fragment').length} visible SVG regions`:'Click a colored part to see its semantic owner.';
  $('targetLabel').textContent=state.target.map(n=>n.toFixed(2)).join(', ');
- window.demo={state,scene,views,kinematics,solveLeastSquares,fourBar,armForward,armIK,svg:key=>views[key].markup,render:refresh,visibilitySnapshot:validationSnapshot,glassCoverageSnapshot,getFrameTimings:()=>window.frameTimings,mergeFill:mergedFillPath,resetVisibilityCaches,setRetainedDOM:value=>{useRetainedDOM=!!value;if(!value){retainedDOM.clear();lastViewKeys.clear();}},getRetainedStats:()=>Object.fromEntries(Object.entries(views).map(([k,v])=>[k,v.stats.dom]))};
+ window.unifiedVectorRenderer={get scene(){return scene;},get geometryCore(){return VectorIllustrationCore;},get sceneType(){return 'mechanical';}};window.demo={state,scene,views,kinematics,solveLeastSquares,fourBar,armForward,armIK,svg:key=>views[key].markup,render:refresh,visibilitySnapshot:validationSnapshot,glassCoverageSnapshot,getFrameTimings:()=>window.frameTimings,mergeFill:mergedFillPath,resetVisibilityCaches,setRetainedDOM:value=>{useRetainedDOM=!!value;if(!value){retainedDOM.clear();lastViewKeys.clear();}},getRetainedStats:()=>Object.fromEntries(Object.entries(views).map(([k,v])=>[k,v.stats.dom]))};
  attachAsyncAPI();
 }
 // --- Independently scheduled vector cameras / off-main-thread visibility ---
@@ -1923,7 +1879,7 @@ function initAsyncWorkers(){
  let url;
  try {
    if(SCRIPT_SOURCE.length>10000){
-     url=URL.createObjectURL(new Blob([SCRIPT_SOURCE],{type:'text/javascript'}));
+     url=URL.createObjectURL(new Blob(["importScripts('/mechanical-illustration/shared/vector-core.js');\n",SCRIPT_SOURCE],{type:'text/javascript'}));
      workerObjectURL=url;
    }else url=script?.src||'mechanism.js';
    for(const key of ['overview','detail']){
