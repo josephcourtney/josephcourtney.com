@@ -143,7 +143,9 @@
   .svgviewport>svg,.svgviewport>.loading-preview,.svgviewport>.motion-preview,
   .svgviewport>.motion-controls,.svgviewport>.compare-canvas{
     top:var(--mobile-scene-center,50%);width:var(--mobile-fit-width,100%);height:var(--mobile-fit-height,auto);}
-  .svgviewport>.motion-preview,.svgviewport>.motion-controls{inset:auto;left:50%;}
+  .svgviewport>.motion-preview,.svgviewport>.motion-controls{
+    inset:auto;left:50%;top:var(--mobile-scene-center,50%);
+  }
   .svgviewport .motion-target-ring,.svgviewport .motion-crank-grip{min-height:44px;min-width:44px;box-shadow:0 0 0 1px rgba(75,103,103,.24);}
   .svgviewport .motion-target-ring{background:rgba(250,245,235,.65);}
   .compare-tools{position:absolute;top:41px;left:9px;right:9px;z-index:12;background:rgba(250,249,245,.96);border:1px solid #c5d0c8;
@@ -1438,8 +1440,8 @@ function fitMobileViewports(){
      const raster=document.getElementById('debugCanvas'),hero=document.querySelector('.hero');
      if(raster&&hero&&raster.parentElement===hero){
        const box=host.getBoundingClientRect(),hb=hero.getBoundingClientRect();
-       raster.style.left=(box.left-hb.left+w/2)+'px';
-       raster.style.top=(box.top-hb.top+available/2)+'px';
+       raster.style.left=(box.left-hb.left-hero.clientLeft+w/2)+'px';
+       raster.style.top=(box.top-hb.top-hero.clientTop+available/2)+'px';
        raster.style.width=width+'px';raster.style.height=height+'px';
      }
    }
@@ -1819,11 +1821,15 @@ function updateInteractiveHandles(key){
 // It must not be tied to worker completion or the preview's visibility state.
 let rasterQueued=false,rasterLast=0,rasterTimer=null,rasterFrames=0,rasterLastPose='',rasterDrawMs=0;
 function rasterCamera(){
- // On touch devices the reference uses the same 3D geometry and camera but
- // half the pixel dimensions. This reduces Canvas2D's per-pixel CPU cost.
- return mobileDevice&&!renderer.ready
-   ?makeCamera(state.az,state.el,V(.24,0,.76),state.zoom*.5,395,255)
-   :viewCfg.overview();
+ // Keep the raster reference in the exact overview camera frame, including
+ // mobile model fitting, orbit/pan/zoom, and target offset. Only resolution
+ // changes: a projected world point must land at the same normalized pixel.
+ const overview=viewCfg.overview();
+ const w=renderer.canvas.width,h=renderer.canvas.height;
+ return w===overview.w&&h===overview.h
+   ?overview
+   :makeCamera(overview.az,overview.el,overview.target,
+       overview.scale*w/overview.w,w,h);
 }
 function scheduleRaster(){
  if(!renderer||!scene)return;
@@ -1993,7 +1999,7 @@ function gestureMove(e){
    const next=clamp(z*ratio,key==='overview'?40:80,key==='overview'?260:360);
    if(key==='overview'){state.zoom=next;$('cameraZoom').value=next;}
    else state.detailZoom=next;
-   const camera=viewCfg[key](),r=document.getElementById(key+'Svg').getBoundingClientRect(),s=camera.scale*Math.max(0.1,r.width/790);
+   const camera=viewCfg[key](),frame=document.getElementById(key+'Svg').querySelector(':scope > svg, :scope > canvas.motion-preview, :scope > img.loading-preview'),r=frame?.getBoundingClientRect()||document.getElementById(key+'Svg').getBoundingClientRect(),s=camera.scale*Math.max(0.1,r.width/camera.w);
    const dx=(mid.x-g.lastMid.x)/s,dy=(mid.y-g.lastMid.y)/s;
    mobileSceneOffset[key]=sub(mobileSceneOffset[key],add(mul(camera.right,dx),mul(camera.up,-dy)));
    g.lastDistance=d;g.lastMid=mid;schedule();return true;
@@ -2045,6 +2051,19 @@ function tick(t){if(!state.play)return;
 function downloadText(data,name,type){const blob=new Blob([data],{type}),url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download=name;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
 function attachAsyncAPI(){if(!window.demo)window.demo={state,scene,views,kinematics,render:schedule,svg:key=>views?.[key]?.markup||'',visibilitySnapshot:validationSnapshot,glassCoverageSnapshot};
  window.demo.getRasterStats=()=>({frames:rasterFrames,lastPose:rasterLastPose,queued:rasterQueued,canvasWidth:renderer?.canvas?.width,canvasHeight:renderer?.canvas?.height,mode:renderer?.ready?'WebGL':'Canvas2D',drawMs:rasterDrawMs});
+ // Camera-normalized projection agreement and live layer alignment.
+ // SVG and preview share a 790x510 camera; raster may run at half resolution.
+ window.demo.getAlignment=()=>{
+   const vec=viewCfg.overview(),ras=rasterCamera(),point=state.target;
+   const a=vec.project(point),b=ras.project(point);
+   const host=$('overviewSvg');
+   const rects={};
+   for(const [name,selector] of [['svg',':scope > svg'],['preview',':scope > canvas.motion-preview'],['handles',':scope > .motion-controls']]){
+     const element=host.querySelector(selector);
+     if(element){const r=element.getBoundingClientRect();rects[name]={x:r.left,y:r.top,width:r.width,height:r.height};}
+   }
+   return {svg:{x:a.x/vec.w,y:a.y/vec.h},raster:{x:b.x/ras.w,y:b.y/ras.h},rects};
+ };
  window.demo.captureRaster=()=>renderer.canvas.toDataURL('image/png');
  window.demo.capturePreview=(key='overview')=>{const r=livePreview.renderers[key];if(r.ready)r.draw(scene,viewCfg[key](),state.ghost);else drawMotion2D(r,scene,viewCfg[key](),state.ghost);return r.canvas.toDataURL('image/png');};
  window.demo.getMotionStats=()=>({styledPreview:true,secondaryFramesSkipped:livePreview.skipped,active:livePreview.enabled,ready:Object.fromEntries(Object.entries(livePreview.renderers).map(([k,v])=>[k,v.ready?'WebGL':v.ctx?'Canvas2D':'none'])),frames:livePreview.frames,finishes:livePreview.finishes,frameTimes:livePreview.frameTimes.slice()});
