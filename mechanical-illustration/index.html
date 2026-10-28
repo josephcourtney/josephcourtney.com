@@ -1716,7 +1716,7 @@ function refresh(){workerGeneration++;for(const w of Object.values(asyncViews))i
  $('azValue').textContent=state.az.toFixed(0)+'°';$('elValue').textContent=state.el.toFixed(0)+'°';$('zoomValue').textContent=state.zoom.toFixed(0)+'×';
  const p=scene.parts.find(x=>x.id===state.selected);$('selected').textContent=p?`${p.label} · ${p.path} · ${$('overviewSvg').querySelectorAll('#part-'+p.id+' .face-fragment').length} visible SVG regions`:'Click a colored part to see its semantic owner.';
  $('targetLabel').textContent=state.target.map(n=>n.toFixed(2)).join(', ');
- window.unifiedVectorRenderer={get scene(){return scene;},get geometryCore(){return VectorIllustrationCore;},get sceneType(){return 'mechanical';}};window.demo={geometryCore:VectorIllustrationCore,state,scene,views,kinematics,solveLeastSquares,fourBar,armForward,armIK,svg:key=>views[key].markup,render:refresh,visibilitySnapshot:validationSnapshot,glassCoverageSnapshot,getFrameTimings:()=>window.frameTimings,mergeFill:mergedFillPath,resetVisibilityCaches,setRetainedDOM:value=>{useRetainedDOM=!!value;if(!value){retainedDOM.clear();lastViewKeys.clear();}},getRetainedStats:()=>Object.fromEntries(Object.entries(views).map(([k,v])=>[k,v.stats.dom]))};
+ window.mechanicalIllustrationRenderer={get scene(){return scene;},get geometryCore(){return VectorIllustrationCore;},get sceneType(){return 'mechanical';}};window.demo={geometryCore:VectorIllustrationCore,state,scene,views,kinematics,solveLeastSquares,fourBar,armForward,armIK,svg:key=>views[key].markup,render:refresh,visibilitySnapshot:validationSnapshot,glassCoverageSnapshot,getFrameTimings:()=>window.frameTimings,mergeFill:mergedFillPath,resetVisibilityCaches,setRetainedDOM:value=>{useRetainedDOM=!!value;if(!value){retainedDOM.clear();lastViewKeys.clear();}},getRetainedStats:()=>Object.fromEntries(Object.entries(views).map(([k,v])=>[k,v.stats.dom]))};
  attachAsyncAPI();
 }
 // --- Independently scheduled vector cameras / off-main-thread visibility ---
@@ -2240,25 +2240,50 @@ $('grid').onchange=e=>{svg.querySelectorAll('.grid-minor,.grid-major').forEach(x
 $('apply-css').onclick=()=>{$('svg-user-style').textContent=$('css-editor').value};
 for(const b of meshRoot.querySelectorAll('[data-lod]'))b.onclick=()=>setLOD(b.dataset.lod);
 const starting={yaw:0,pitch:0,dist:0,zoom:1};
-svg.addEventListener('pointerdown',e=>{if(e.button!==0&&e.pointerType==='mouse')return;svg.setPointerCapture(e.pointerId);touchPoints.set(e.pointerId,{x:e.clientX,y:e.clientY});starting.yaw=camera.yaw;starting.pitch=camera.pitch;starting.zoom=camera.zoom;starting.dist=0;});
-svg.addEventListener('pointermove',e=>{
-  if(!touchPoints.has(e.pointerId))return;
-  const prev=touchPoints.get(e.pointerId);
-  const dx=e.clientX-prev.x,dy=e.clientY-prev.y;
-  touchPoints.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(touchPoints.size>=2){
-    const p=[...touchPoints.values()];let dist=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
-    if(starting.dist)zoom(dist/starting.dist);
-    starting.dist=dist;
-  } else {
-    const width=svg.getBoundingClientRect().width;
-    camera.yaw+=dx/width*4.1;
-    camera.pitch=Math.max(-1.4,Math.min(1.4,camera.pitch+dy/width*4.1));
-    spin=0;$('spin-speed').value=0;$('spin-read').textContent='0.00 rad/s';$('play-pause').textContent='Resume rotation';dirty=true;
-  }
-});
-function endTouch(e){touchPoints.delete(e.pointerId);starting.dist=0;}
-svg.addEventListener('pointerup',endTouch);svg.addEventListener('pointercancel',endTouch);svg.addEventListener('lostpointercapture',endTouch);
+// Window-level pointer tracking survives SVG path boundaries and WebKit's
+// shadow-root pointer capture retargeting. Drawing still uses native SVG.
+const activeGesturePointers=new Map();
+function rotateMeshBy(dx,dy){
+  const width=Math.max(1,svg.getBoundingClientRect().width);
+  camera.yaw+=dx/width*4.1;
+  camera.pitch=Math.max(-1.4,Math.min(1.4,camera.pitch+dy/width*4.1));
+  if(spin!==0){spin=0;$('spin-speed').value='0';$('spin-read').textContent='0.00 rad/s';$('play-pause').textContent='Resume rotation';}
+  dirty=true;
+}
+function beginMeshPointer(e){
+  if(e.pointerType==='mouse'&&e.button!==0)return;
+  activeGesturePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  starting.dist=0;
+  try{svg.setPointerCapture(e.pointerId);}catch(_){}
+}
+function moveMeshPointer(e){
+  const previous=activeGesturePointers.get(e.pointerId);
+  if(!previous)return;
+  activeGesturePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(activeGesturePointers.size>=2){
+    const p=[...activeGesturePointers.values()];
+    const distance=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
+    if(starting.dist)zoom(distance/starting.dist);
+    starting.dist=distance;
+    dirty=true;
+  }else rotateMeshBy(e.clientX-previous.x,e.clientY-previous.y);
+  if(e.cancelable)e.preventDefault();
+}
+function finishMeshPointer(e){
+  activeGesturePointers.delete(e.pointerId);
+  starting.dist=0;
+  try{if(svg.hasPointerCapture(e.pointerId))svg.releasePointerCapture(e.pointerId);}catch(_){}
+}
+svg.addEventListener('pointerdown',beginMeshPointer);
+window.addEventListener('pointermove',moveMeshPointer,{passive:false});
+window.addEventListener('pointerup',finishMeshPointer);
+window.addEventListener('pointercancel',finishMeshPointer);
+if(!window.PointerEvent){
+  let previousTouch=null;
+  svg.addEventListener('touchstart',e=>{const t=e.touches[0];previousTouch=t?{x:t.clientX,y:t.clientY}:null;},{passive:true});
+  svg.addEventListener('touchmove',e=>{const t=e.touches[0];if(!t||!previousTouch)return;rotateMeshBy(t.clientX-previousTouch.x,t.clientY-previousTouch.y);previousTouch={x:t.clientX,y:t.clientY};e.preventDefault();},{passive:false});
+  svg.addEventListener('touchend',()=>{previousTouch=null;});
+}
 svg.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(-e.deltaY*.001))},{passive:false});
 $('export-svg').onclick=()=>{
   const clone=svg.cloneNode(true);
@@ -2736,6 +2761,7 @@ requestAnimationFrame(frame);
     render:()=>{dirty=true;render();}
   };
   selectFamily('bunny');
+  window.meshIllustrationRenderer=window.unifiedVectorRenderer;
 })();
 
 
@@ -2753,8 +2779,10 @@ requestAnimationFrame(frame);
     btns.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.unifiedTarget===which)));
     note.textContent=which==='mechanism'?'Articulated assembly · kinematics & editable SVG':
       which==='bunny'?'Organic 3D mesh · geometric SVG': 'Concave planar housing · geometric SVG';
-    if(which!=='mechanism'&&window.unifiedVectorRenderer){
-      window.unifiedVectorRenderer.selectScene(which);
+    if(which!=='mechanism'){
+      const mesh=window.meshIllustrationRenderer;
+      if(mesh?.selectScene)mesh.selectScene(which);
+      else console.warn('Mesh renderer not initialized for scene:',which);
     }
     if(save)history.replaceState(null,'','?scene='+encodeURIComponent(which));
   }
@@ -2762,7 +2790,7 @@ requestAnimationFrame(frame);
   window.addEventListener('popstate',()=>activate(new URLSearchParams(location.search).get('scene'),false));
   window.unifiedIllustrationApp={activate, get activeScene(){return document.body.dataset.unifiedScene;},
     get geometryCore(){return window.VectorIllustrationCore;},
-    get meshRenderer(){return window.unifiedVectorRenderer;},
+    get meshRenderer(){return window.meshIllustrationRenderer;},
     get mechanicalRenderer(){return window.demo;}};
   activate(new URLSearchParams(location.search).get('scene')||'mechanism',false);
 })();
