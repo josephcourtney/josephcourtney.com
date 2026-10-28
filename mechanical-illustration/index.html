@@ -396,7 +396,7 @@ window.__showMesh=false;
 window.__unifiedMeshRoot=document.getElementById('unified-mesh-host').attachShadow({mode:'open'});
 window.__unifiedMeshRoot.appendChild(document.getElementById('unified-mesh-template').content.cloneNode(true));
 </script>
-<script src="/mechanical-illustration/shared/vector-core.js?v=2"></script>
+<script src="/mechanical-illustration/shared/vector-core.js?v=3"></script>
 <script>/* Kinematics, part hierarchy and semantic SVG share the VectorIllustrationCore kernel. */
 (()=>{
 'use strict';
@@ -1977,7 +1977,7 @@ function initAsyncWorkers(){
  let url;
  try {
    if(SCRIPT_SOURCE.length>10000){
-     url=URL.createObjectURL(new Blob(["importScripts("+JSON.stringify(location.origin+"/mechanical-illustration/shared/vector-core.js?v=2")+");\n",SCRIPT_SOURCE],{type:'text/javascript'}));
+     url=URL.createObjectURL(new Blob(["importScripts("+JSON.stringify(location.origin+"/mechanical-illustration/shared/vector-core.js?v=3")+");\n",SCRIPT_SOURCE],{type:'text/javascript'}));
      workerObjectURL=url;
    }else url=script?.src||'mechanism.js';
    for(const key of ['overview','detail']){
@@ -2677,7 +2677,7 @@ requestAnimationFrame(frame);
     dirty=false;
   }
   try{
-    geometryWorker=new Worker('/mechanical-illustration/shared/mesh-render-worker.js?v=1');
+    geometryWorker=new Worker('/mechanical-illustration/shared/mesh-render-worker.js?v=2');
     geometryWorker.onmessage=e=>{
       const msg=e.data;
       if(msg.type==='mesh-ready'){
