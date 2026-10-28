@@ -433,15 +433,12 @@ requestAnimationFrame(frame);
   // It indexes *projected analytic triangles*, not sampled pixels.
   function indexTriangles(tris,cell=54){return VectorIllustrationCore.spatialIndex(tris,cell);}
   function bounding(a,b,c){return [Math.min(a.x,b.x,c.x),Math.min(a.y,b.y,c.y),Math.max(a.x,b.x,c.x),Math.max(a.y,b.y,c.y)];}
-  function pathpoly(points){return 'M'+points.map(p=>`${fmt(p.x)},${fmt(p.y)}`).join('L')+'Z';}
+  
   // Interpolate isoline crossing in 3D and reproject via perspective-correct screen t.
-  function thresholdPoly(poly,level){return VectorIllustrationCore.thresholdPolygon(poly,level,'light','inv');}
+  
   // Segment clipping against triangle's projected half-planes, then its
   // affine inverse-depth plane. The result is an exact parametric interval.
-  function blockedInterval(a,b,tri,adjacent){
-    if(tri.id===adjacent[0]||tri.id===adjacent[1])return null;
-    return VectorIllustrationCore.occludedSegmentInterval(a,b,tri,{depthKey:'inv',epsilon:0.00015});
-  }
+  
   function clipSegment(a,b,adj,index){
     const bb=[Math.min(a.x,b.x)-.01,Math.min(a.y,b.y)-.01,Math.max(a.x,b.x)+.01,Math.max(a.y,b.y)+.01];
     return VectorIllustrationCore.segmentVisibility(a,b,index.query(bb),{
@@ -485,29 +482,9 @@ requestAnimationFrame(frame);
     let area=0;for(let i=0;i<poly.length;i++){const p=poly[i],q=poly[(i+1)%poly.length];area+=p.x*q.y-q.x*p.y;}
     return Math.abs(area)*.5;
   }
-  function polygonBounds(poly){
-    let l=Infinity,t=Infinity,r=-Infinity,b=-Infinity;
-    for(const p of poly){l=Math.min(l,p.x);r=Math.max(r,p.x);t=Math.min(t,p.y);b=Math.max(b,p.y);}
-    return [l,t,r,b];
-  }
-  function polyHalfplane(poly,equation,inside=true){
-    const out=[];
-    for(let i=0;i<poly.length;i++){
-      const a=poly[i],b=poly[(i+1)%poly.length],fa=equation(a),fb=equation(b);
-      const ina=inside?fa>=-1e-10:fa<=1e-10;
-      const inb=inside?fb>=-1e-10:fb<=1e-10;
-      if(ina)out.push(a);
-      if(ina!==inb){
-        const t=clamp(fa/(fa-fb),0,1);
-        out.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,
-          inv:a.inv+(b.inv-a.inv)*t,light:a.light+(b.light-a.light)*t});
-      }
-    }
-    return out;
-  }
-  function subtractOccluded(subject,sourcePlane,occluder){
-    return VectorIllustrationCore.subtractPolygon(subject,sourcePlane,occluder,{epsilon:.00007,minArea:.005,depthKey:'inv'});
-  }
+  
+  
+  
   function coplanarTjunction(edge,mesh){
     if(!mesh.angular||edge.b>=0)return false;
     const a=mesh.f[edge.a*3],b=mesh.f[edge.a*3+1],c=mesh.f[edge.a*3+2];

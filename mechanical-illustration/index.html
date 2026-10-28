@@ -442,18 +442,7 @@ const depth=(p,pl)=>pl[0]*p.x+pl[1]*p.y+pl[2];
 function cleanPoly(poly){const out=[];for(const p of poly){if(out.length===0||Math.hypot(p.x-out.at(-1).x,p.y-out.at(-1).y)>1e-5)out.push(p);}
  if(out.length>1&&Math.hypot(out[0].x-out.at(-1).x,out[0].y-out.at(-1).y)<1e-5)out.pop();
  return out.length>=3&&Math.abs(polygonArea(out))>.00004?out:[];}
-function splitPoly(poly, fn){const yes=[],no=[];if(poly.length<3)return [[],[]];
- for(let i=0;i<poly.length;i++){
-   const a=poly[i],b=poly[(i+1)%poly.length],fa=fn(a),fb=fn(b);
-   if(fa>=-1e-7)yes.push(a);
-   if(fa<=1e-7)no.push(a);
-   if((fa>EPS&&fb<-EPS)||(fa<-EPS&&fb>EPS)){
-     const t=fa/(fa-fb);const point={x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y)};
-     yes.push(point);no.push(point);
-   }
- }
- return [cleanPoly(yes),cleanPoly(no)];
-}
+
 function triangles(projected,face){const v=projected, res=[];
  // Convex polygons, triangulated solely for depth-tested occlusion.
  for(let i=1;i<v.length-1;i++){
@@ -512,13 +501,8 @@ function faceParts(scene,camera,cache=null){const rendered=[],occluders=[],partI
  }
  return {rendered,occluders,partInfo};
 }
-function cuttingFunctions(tri,pl){const pts=tri.pts;
- return pts.map((a,i)=>{const b=pts[(i+1)%pts.length];return p=>(b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x);})
- .concat([p=>depth(p,tri.pl)-depth(p,pl)-DEPTH_EPS]);
-}
-function subtractOccluder(poly,cutters){
- return VectorIllustrationCore.subtractByCutters(poly,cutters,{minArea:4e-5,epsilon:1e-7});
-}
+
+
 // Conservative broad-phase: a projected triangle is placed into all cells touched by
 // its screen-space bounding box. Querying any polygon bounding box is exact in the
 // sense that it cannot omit a potentially intersecting triangle.
@@ -583,16 +567,8 @@ function resolveFaces(scene,camera,ghostPost,cache=null){const {rendered,occlude
  }}
  return {byOwner,occluders:opaque,occluderIndex:index,rendered,total,hidden,reusedOwners,cacheKeys};
 }
-function splitInterval(t0,t1,fA,fB){let l=t0,h=t1;
- // f(t) >= 0 ; clip interval.
- if(Math.abs(fB-fA)<1e-8)return fA>=0?[l,h]:null;
- const t=-fA/(fB-fA);
- if(fB>fA) l=Math.max(l,t);else h=Math.min(h,t);
- return h>l+1e-7?[l,h]:null;
-}
-function hiddenInterval(a,b,tri){
- return VectorIllustrationCore.occludedSegmentInterval(a,b,tri,{depthKey:'d',epsilon:DEPTH_EPS});
-}
+
+
 function lineVisibility(a,b,occluders,owner,featureId){
  const bb=bbox([a,b]),minD=Math.min(a.d,b.d);
  const candidates=(Array.isArray(occluders)?occluders:occluders.query(bb))
@@ -1576,7 +1552,7 @@ function refresh(){workerGeneration++;for(const w of Object.values(asyncViews))i
  $('azValue').textContent=state.az.toFixed(0)+'°';$('elValue').textContent=state.el.toFixed(0)+'°';$('zoomValue').textContent=state.zoom.toFixed(0)+'×';
  const p=scene.parts.find(x=>x.id===state.selected);$('selected').textContent=p?`${p.label} · ${p.path} · ${$('overviewSvg').querySelectorAll('#part-'+p.id+' .face-fragment').length} visible SVG regions`:'Click a colored part to see its semantic owner.';
  $('targetLabel').textContent=state.target.map(n=>n.toFixed(2)).join(', ');
- window.unifiedVectorRenderer={get scene(){return scene;},get geometryCore(){return VectorIllustrationCore;},get sceneType(){return 'mechanical';}};window.demo={state,scene,views,kinematics,solveLeastSquares,fourBar,armForward,armIK,svg:key=>views[key].markup,render:refresh,visibilitySnapshot:validationSnapshot,glassCoverageSnapshot,getFrameTimings:()=>window.frameTimings,mergeFill:mergedFillPath,resetVisibilityCaches,setRetainedDOM:value=>{useRetainedDOM=!!value;if(!value){retainedDOM.clear();lastViewKeys.clear();}},getRetainedStats:()=>Object.fromEntries(Object.entries(views).map(([k,v])=>[k,v.stats.dom]))};
+ window.unifiedVectorRenderer={get scene(){return scene;},get geometryCore(){return VectorIllustrationCore;},get sceneType(){return 'mechanical';}};window.demo={geometryCore:VectorIllustrationCore,state,scene,views,kinematics,solveLeastSquares,fourBar,armForward,armIK,svg:key=>views[key].markup,render:refresh,visibilitySnapshot:validationSnapshot,glassCoverageSnapshot,getFrameTimings:()=>window.frameTimings,mergeFill:mergedFillPath,resetVisibilityCaches,setRetainedDOM:value=>{useRetainedDOM=!!value;if(!value){retainedDOM.clear();lastViewKeys.clear();}},getRetainedStats:()=>Object.fromEntries(Object.entries(views).map(([k,v])=>[k,v.stats.dom]))};
  attachAsyncAPI();
 }
 // --- Independently scheduled vector cameras / off-main-thread visibility ---
