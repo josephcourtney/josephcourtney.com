@@ -49,11 +49,20 @@ function halfplane(poly,fn,keepPositive=true,eps=1e-10){
 // than a subject. All inputs are projected polygons with an affine depth law.
 function subtractPolygon(subject,subjectPlane,occluder,{epsilon=1e-8,minArea=1e-6,depthKey='d'}={}){
   if(subject.length<3)return [];
+  const nearPlane=occluder.plane||occluder.pl;
+  if(nearPlane&&subjectPlane){
+    const dx=nearPlane[0]-subjectPlane[0],dy=nearPlane[1]-subjectPlane[1],dz=nearPlane[2]-subjectPlane[2]-epsilon;
+    if(subject.every(v=>dx*v.x+dy*v.y+dz<=0))return [subject];
+  }
   let inside=subject;const outside=[],p=occluder.pts;
   const sign=Math.sign(area(p))||1;
   for(let i=0;i<p.length;i++){
     const a=p[i],b=p[(i+1)%p.length],dx=b.x-a.x,dy=b.y-a.y;
     const eq=q=>sign*(dx*(q.y-a.y)-dy*(q.x-a.x));
+    let anyIn=false,anyOut=false;
+    for(const q of inside){const v=eq(q);if(v>=-1e-10)anyIn=true;if(v<=1e-10)anyOut=true;if(anyIn&&anyOut)break;}
+    if(!anyIn){if(inside.length>=3&&Math.abs(area(inside))>minArea)outside.push(inside);return outside;}
+    if(!anyOut)continue;
     const exposed=halfplane(inside,eq,false);
     if(exposed.length>=3&&Math.abs(area(exposed))>minArea)outside.push(exposed);
     inside=halfplane(inside,eq,true);
