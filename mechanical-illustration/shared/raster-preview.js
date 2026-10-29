@@ -97,6 +97,7 @@ class RasterPreview{
    for(const id of [a,b,c]){const q=p[id];fills.push(q.x,q.y,q.depth,q.inv,light===null?l[id]:light,0,0,0);}
   }
   const silhouette=rgb(style.ink||'#293b36'),crease=rgb(style.crease||'#3a5a53');
+  const inkPolicy=root.VectorIllustrationCore?.meshInkPolicy?.(m.angular)||{silhouetteWidth:1.25,creaseWidth:.95};
   const threshold=Math.cos((m.angular?33:63)*Math.PI/180);
   for(const e of m.edges||[]){
    const A=faceFront[e.a],B=e.b<0?!A:faceFront[e.b];
@@ -108,7 +109,7 @@ class RasterPreview{
     const d=m.normals[a]*m.normals[b]+m.normals[a+1]*m.normals[b+1]+m.normals[a+2]*m.normals[b+2];
     sharp=d<threshold;
    }
-   if((sil&& (A||B))||sharp)quad(lines,p[e.p],p[e.q],sil?(style.lineWidth||1.9):1.35,silhouette&&sil?silhouette:crease);
+   if((sil&& (A||B))||sharp)quad(lines,p[e.p],p[e.q],sil?(style.lineWidth??inkPolicy.silhouetteWidth):inkPolicy.creaseWidth,silhouette&&sil?silhouette:crease);
   }
   this.drawGeometry(fills,lines,true);
  }
