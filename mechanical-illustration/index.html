@@ -2226,7 +2226,7 @@ function frame(t){
   if(t-lastMetrics>350){metrics();lastMetrics=t;}
   requestAnimationFrame(frame);
 }
-function zoom(mult){camera.zoom=Math.max(.55,Math.min(2.25,camera.zoom*mult));dirty=true}
+function zoom(mult){camera.zoom=Math.max(.55,Math.min(2.25,camera.zoom*mult));dirty=true;window.__meshSyncPreview?.('interaction')}
 $('zoom-in').onclick=()=>zoom(1.16);
 $('zoom-out').onclick=()=>zoom(1/1.16);
 $('reset').onclick=()=>{camera.yaw=3.1;camera.pitch=-.12;camera.zoom=1;dirty=true};
@@ -2249,6 +2249,7 @@ function rotateMeshBy(dx,dy){
   camera.pitch=Math.max(-1.4,Math.min(1.4,camera.pitch+dy/width*4.1));
   if(spin!==0){spin=0;$('spin-speed').value='0';$('spin-read').textContent='0.00 rad/s';$('play-pause').textContent='Resume rotation';}
   dirty=true;
+  window.__meshSyncPreview?.('interaction');
 }
 function beginMeshPointer(e){
   if(e.pointerType==='mouse'&&e.button!==0)return;
@@ -2459,6 +2460,7 @@ requestAnimationFrame(frame);
     dirty=true;
     for(const b of meshRoot.querySelectorAll('[data-lod]'))b.setAttribute('aria-pressed',String(b.dataset.lod===name));
     $('mesh-label').textContent=selected.nv.toLocaleString()+' vertices · '+selected.nf.toLocaleString()+' triangles';
+    if(window.__showMesh)window.__meshSyncPreview?.('quality');
   };
   function selectFamily(which){
     currentFamily=which;
@@ -2680,9 +2682,28 @@ requestAnimationFrame(frame);
   $('export-svg').addEventListener('click',()=>synchronousRender(),{capture:true});
   let geometryWorker=null,workerUsable=false,workerBusy=false,meshVersion=0;
   let previousMesh=null,readyVersion=0,lastRevision=0,pendingFrame=null;
+  let minAcceptRevision=0, workerTimer=null, workerInitTimer=null, previewAt=0;
+  // A worker can be slow to start or fail silently on mobile WebKit. Immediate
+  // native-SVG rendering guarantees that controls remain functional regardless.
+  window.__meshSyncPreview=(kind='interaction')=>{
+    if(!window.__showMesh||!selected)return;
+    minAcceptRevision=lastRevision+1;
+    const now=performance.now();
+    if(kind==='interaction'&&now-previewAt<85)return;
+    previewAt=now;
+    const target=selected;
+    if(kind==='interaction'&&!target.angular&&lod==='full')selected=prepareMesh('fast');
+    try{synchronousRender();}
+    catch(e){console.error('Direct SVG preview failed:',e);}
+    finally{selected=target;dirty=true;}
+  };
   function submitFrame(request){
     if(!geometryWorker||!workerUsable||workerBusy||readyVersion!==meshVersion)return;
     workerBusy=true;
+    if(workerTimer)clearTimeout(workerTimer);
+    workerTimer=setTimeout(()=>{
+      if(workerBusy){fallback('Geometry worker timed out');window.__meshSyncPreview?.('quality');}
+    },6000);
     geometryWorker.postMessage(request);
   }
   function buildRequest(){
@@ -2693,6 +2714,8 @@ requestAnimationFrame(frame);
   function fallback(reason){
     if(geometryWorker){geometryWorker.terminate();geometryWorker=null;}
     workerUsable=false;workerBusy=false;pendingFrame=null;readyVersion=0;
+    if(workerTimer){clearTimeout(workerTimer);workerTimer=null;}
+    if(workerInitTimer){clearTimeout(workerInitTimer);workerInitTimer=null;}
     if(reason)console.warn('SVG geometry worker unavailable; using synchronous renderer:',reason);
     dirty=true;
   }
@@ -2715,11 +2738,13 @@ requestAnimationFrame(frame);
       if(msg.type==='mesh-ready'){
         if(msg.version!==meshVersion)return;
         readyVersion=msg.version;
+        if(workerInitTimer){clearTimeout(workerInitTimer);workerInitTimer=null;}
         if(!workerBusy&&pendingFrame){const req=pendingFrame;pendingFrame=null;submitFrame(req);}
       }else if(msg.type==='error'){fallback(msg.stack||msg.message);synchronousRender();}
       else if(msg.type==='frame'){
         workerBusy=false;
-        if(msg.version===meshVersion){
+        if(workerTimer){clearTimeout(workerTimer);workerTimer=null;}
+        if(msg.version===meshVersion && msg.revision>=minAcceptRevision){
           const t=performance.now();
           if(lastSvgCommit){
             const dt=t-lastSvgCommit;
@@ -2747,6 +2772,11 @@ requestAnimationFrame(frame);
     };
     geometryWorker.onerror=e=>fallback(e.message);
     workerUsable=true;
+    workerInitTimer=setTimeout(()=>{
+      if(geometryWorker&&meshVersion>0&&readyVersion!==meshVersion){
+        fallback('Geometry worker did not initialize');window.__meshSyncPreview?.('quality');
+      }
+    },3500);
   }catch(e){fallback(String(e));}
   render=workerRender;
   window.unifiedVectorRenderer={
@@ -2762,6 +2792,8 @@ requestAnimationFrame(frame);
   };
   selectFamily('bunny');
   window.meshIllustrationRenderer=window.unifiedVectorRenderer;
+  // Render once immediately when visible, even before worker initialization.
+  if(window.__showMesh)window.__meshSyncPreview?.('quality');
 })();
 
 
