@@ -331,7 +331,7 @@ function mergedFillPath(polygons,{precision=3}={}){
 function meshInkPolicy(angular=false){
  return angular?Object.freeze({silhouetteMinLength:7,creaseMinLength:3,depthJump:0.006,
     silhouetteWidth:1.25,creaseWidth:.95}):
- Object.freeze({silhouetteMinLength:13,creaseMinLength:14,depthJump:0.016,
+ Object.freeze({silhouetteMinLength:13,creaseMinLength:14,depthJump:0.016,depthBehind:0.020,depthNearTolerance:0.018,
     silhouetteWidth:1.25,creaseWidth:.95});
 }
 function frameMayCommit({sceneVersion=0,activeSceneVersion=0,revision=0,lastCommitted=0}={}){
@@ -357,7 +357,7 @@ function compileSVG(scene,{width=800,height=610,style='',paper='#f9f7ef',title='
  }
  return svg+'</svg>';
 }
-root.VectorIllustrationCore=Object.freeze({...K,version:'2.3.0',meshInkPolicy,frameMayCommit,visibleSurfaces,visibleFeatures,renderProjectedScene,pathData,mergedFillPath,compileSVG});
+root.VectorIllustrationCore=Object.freeze({...K,version:'2.4.0',meshInkPolicy,frameMayCommit,visibleSurfaces,visibleFeatures,renderProjectedScene,pathData,mergedFillPath,compileSVG});
 })(typeof self!=='undefined'?self:globalThis);
 
 if(typeof module!=='undefined'&&module.exports)module.exports=globalThis.VectorIllustrationCore;
