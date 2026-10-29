@@ -2220,10 +2220,11 @@ function render(){} // Installed by the geometry-native renderer before the firs
 function metrics(){
   $('fps-value').parentElement.querySelector('.statlabel').textContent=(window.meshIllustrationRenderer?.previewActive?'GPU FPS':'SVG FPS');
   const fmt=n=>Number.isFinite(n)?n.toFixed(2)+' ms':'—';
-  $('fps-value').textContent=window.meshIllustrationRenderer?.previewActive
+  const status=window.meshIllustrationRenderer;
+  $('fps-value').textContent=status?.previewActive
     ? (Math.round(fpsAvg)||'—')
-    : workerUsable
-      ? (lastSvgCommit&&performance.now()-lastSvgCommit<1200 ? (Math.round(svgFpsAvg)||'—') : '—')
+    : status?.workerMode==='worker'
+      ? (status.lastSvgCommit&&performance.now()-status.lastSvgCommit<1200 ? (Math.round(status.svgFps)||'—') : '—')
       : (Math.round(fpsAvg)||'—');
   $('total-value').textContent=cpuAvg.toFixed(1);
   $('projection-value').textContent=fmt(projAvg);
@@ -2849,6 +2850,8 @@ requestAnimationFrame(frame);
     get rendererVersion(){return VectorIllustrationCore.version;},
     get workerMode(){return geometryWorker&&workerUsable?'worker':'synchronous';},
     get sceneType(){return currentFamily;},
+    get svgFps(){return svgFpsAvg;},
+    get lastSvgCommit(){return lastSvgCommit;},
     get selectedMesh(){return selected;},
     get camera(){return {...camera};},
     selectScene:selectFamily,
