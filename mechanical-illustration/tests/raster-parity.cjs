@@ -80,6 +80,21 @@ function compare(a,b){
   await page.mouse.up();
   await page.waitForFunction(()=>!window.meshIllustrationRenderer.previewActive,{timeout:30000});
   findings.push({scene:'bunny',orbit:true,fullResolutionStable:true,rasterHiddenAfterSettle:true});
+  // A second viewpoint catches false-positive internal silhouette fragments
+  // that are not visible in the initial, predominantly side-on bunny view.
+  const box2=await page.locator('#unified-mesh-host #bunny-svg').boundingBox();
+  await page.mouse.move(box2.x+box2.width*.62,box2.y+box2.height*.54);
+  await page.mouse.down();
+  await page.mouse.move(box2.x+box2.width*.34,box2.y+box2.height*.54,{steps:5});
+  await page.mouse.up();
+  await page.waitForFunction(()=>!window.meshIllustrationRenderer?.previewActive,{timeout:30000});
+  const frontalSVG=await page.locator('#unified-mesh-host .viewer').screenshot({timeout:30000});
+  fs.writeFileSync(dir+'/bunny-frontal-svg.png',frontalSVG);
+  assert(await page.evaluate(()=>window.__meshDrawRaster?.()===true),'Frontal GPU render unavailable');
+  const frontalGPU=await page.locator('#unified-mesh-host .viewer').screenshot({timeout:30000});
+  fs.writeFileSync(dir+'/bunny-frontal-raster.png',frontalGPU);
+  findings.push({scene:'bunny-alternate-camera',parity:compare(frontalSVG,frontalGPU),ink:inkCompare(frontalSVG,frontalGPU)});
+  await page.evaluate(()=>window.meshIllustrationRenderer.cancelPreview());
   await page.locator('[data-unified-target="housing"]').click();
   await page.waitForFunction(()=>window.meshIllustrationRenderer?.sceneType==='housing',{timeout:30000});
   await page.waitForFunction(()=>!window.meshIllustrationRenderer?.previewActive,{timeout:30000});
