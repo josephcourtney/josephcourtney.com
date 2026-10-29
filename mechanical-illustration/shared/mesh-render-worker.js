@@ -1,6 +1,6 @@
 /* Off-main-thread geometry-native SVG rendering. */
 'use strict';
-importScripts('/mechanical-illustration/shared/vector-core.js?v=4');
+importScripts('/mechanical-illustration/shared/vector-core.js?v=5');
 const CAM_D=3.65, DEPTH_LAYERS=1;
 let selected=null, contours=true, wire=false, showInternal=true, showSuggestive=false;
 let camera={yaw:0,pitch:-.12,zoom:1},visible=0,currentFamily='bunny';
@@ -40,7 +40,7 @@ const hypo=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
     }
     return depth;
   }
-  function describesOcclusion(a,b,index){
+  function describesOcclusion(a,b,index,inkPolicy){
     const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);
     if(len<2)return false;
     const mx=(a.x+b.x)*.5,my=(a.y+b.y)*.5,nx=-dy/len,ny=dx/len;
@@ -48,7 +48,7 @@ const hypo=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
       const x1=mx+nx*dist,y1=my+ny*dist,x2=mx-nx*dist,y2=my-ny*dist;
       const z1=frontDepthAt(x1,y1,index),z2=frontDepthAt(x2,y2,index);
       if(!Number.isFinite(z1)||!Number.isFinite(z2))return true;
-      if(Math.abs(z1-z2)>0.006)return true;
+      if(Math.abs(z1-z2)>inkPolicy.depthJump)return true;
     }
     return false;
   }
@@ -145,6 +145,7 @@ function buildFrame(){
     });
     // Mesh topology is the authoritative feature source for both models.
     const edgeFeatures=[];
+    const inkPolicy=VectorIllustrationCore.meshInkPolicy(m.angular);
     const creaseCos=Math.cos((m.angular?33:63)*Math.PI/180);
     for(const e of m.edges){
       const p=pts[e.p],q=pts[e.q],A=allFaces[e.a],B=e.b>=0?allFaces[e.b]:null;
@@ -179,7 +180,7 @@ function buildFrame(){
       const segments=[];
       for(const poly of f.visible)for(let j=1;j<poly.length;j++)segments.push([poly[j-1],poly[j]]);
       if(f.silhouette&&contours){
-        for(const seg of segments)if(m.angular||describesOcclusion(seg[0],seg[1],index))contourPieces.push(seg);
+        for(const seg of segments)if(m.angular||describesOcclusion(seg[0],seg[1],index,inkPolicy))contourPieces.push(seg);
       }else if(f.crease&&showInternal)creasePieces.push(...segments);
       if(wire)wirePieces.push(...segments);
     }
@@ -187,8 +188,8 @@ function buildFrame(){
     if(!m.angular && showInternal && showSuggestive)formPieces=organicFormSegments(m,pts,normals,index,allFaces);
 
     const t2=performance.now();
-    return {paths:buckets[0].map(a=>a.join('')),outlines:joinLines(contourPieces,7.0),
-      creases:showInternal?joinLines(creasePieces,3.0):'',form:joinLines(formPieces,20),
+    return {paths:buckets[0].map(a=>a.join('')),outlines:joinLines(contourPieces,inkPolicy.silhouetteMinLength),
+      creases:showInternal?joinLines(creasePieces,inkPolicy.creaseMinLength):'',form:joinLines(formPieces,20),
       wire:wire?joinLines(wirePieces,1):'',visible,
       projectionMs:t1-t0,geometryMs:t2-t1,totalMs:t2-t0};
 }
