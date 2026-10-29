@@ -183,7 +183,11 @@ body[data-unified-scene="housing"] #unified-mesh-host{display:block}
 body[data-unified-scene="bunny"] > header.top,body[data-unified-scene="housing"] > header.top,
 body[data-unified-scene="bunny"] > main.layout,body[data-unified-scene="housing"] > main.layout{display:none!important}
 @media(max-width:660px){.unified-scene-nav{gap:5px;padding:9px}.unified-scene-nav button{flex:1;padding:10px 5px;font-size:11px}.unified-scene-note{width:100%;font-size:11px;margin-left:0}}
-</style></head>
+</style><style>
+.svgviewport.motion-active > svg .semantic-model{visibility:hidden}
+.svgviewport.motion-active .motion-preview{transition:none!important}
+</style>
+</head>
 <body><header class="top"><div class="eyebrow">INTERACTIVE TECHNICAL STUDY · 01 / KINEMATICS</div><h1>Motion, made visible</h1><p>An incrementally rendered drawing laboratory: one closed four-bar mechanism, one spatial inverse-kinematics arm, curved geometric test features, and two independent views of the same 3D scene. Drag the blue crank pin or the rust-colored target.</p></header><nav class="unified-scene-nav" aria-label="Illustration scenes">
 <button type="button" data-unified-target="mechanism" aria-pressed="true">Mechanism</button>
 <button type="button" data-unified-target="bunny" aria-pressed="false">Stanford Bunny</button>
@@ -397,6 +401,7 @@ window.__unifiedMeshRoot=document.getElementById('unified-mesh-host').attachShad
 window.__unifiedMeshRoot.appendChild(document.getElementById('unified-mesh-template').content.cloneNode(true));
 </script>
 <script src="/mechanical-illustration/shared/vector-core.js?v=4"></script>
+<script src="/mechanical-illustration/shared/raster-preview.js?v=1"></script>
 <script>/* Kinematics, part hierarchy and semantic SVG share the VectorIllustrationCore kernel. */
 (()=>{
 'use strict';
@@ -1741,23 +1746,26 @@ function sendLatest(key){const q=asyncViews[key];if(!q||q.busy||!q.desired||!q.r
 // This preview never changes the SVG export or the visibility-ID diagnostics.
 const livePreview={enabled:false,ending:false,canvases:{},renderers:{},controls:{},frames:0,frameTimes:[],finishes:0,lastDraw:{},skipped:0};
 function initLivePreview(){
+ // One depth-tested raster backend, shared by all three scenes.
+ if(!window.VectorRasterPreview)return;
  for(const key of ['overview','detail']){
    const host=$(key+'Svg'),canvas=document.createElement('canvas');
    canvas.className='motion-preview';canvas.width=790;canvas.height=510;
-   host.appendChild(canvas);
    const controls=document.createElement('div');controls.className='motion-controls';
    controls.innerHTML='<div class="motion-target-link"></div><div data-live-control="ik-target" class="motion-target-ring"></div><div class="motion-target-cross"></div><div data-live-control="crank-grip" class="motion-crank-grip"></div>';
-   host.appendChild(controls);
-   livePreview.canvases[key]=canvas;livePreview.controls[key]=controls;
-   livePreview.renderers[key]=safeRaster(canvas,{illustrated:true});
-   livePreview.canvases[key]=livePreview.renderers[key].canvas;
+   try{
+     const gpu=new VectorRasterPreview(canvas);
+     host.appendChild(canvas);host.appendChild(controls);
+     livePreview.canvases[key]=canvas;livePreview.controls[key]=controls;
+     livePreview.renderers[key]={ready:true,canvas,draw:(model,camera)=>{
+       gpu.drawMechanism(model,camera,{features:allFeatures,selected:state.selected});
+     }};
+   }catch(err){console.warn('Illustration raster preview unavailable:',err);}
  }
 }
 function showLivePreview(){
- // Illustration fidelity is identical in motion and at rest. Do not activate
- // an alternate Canvas/WebGL rendering path for a mechanism gesture.
- return false;
- if(!Object.values(livePreview.renderers).every(r=>r.ready||r.ctx))return false;
+ // Other art treatments remain vector-only where matching is not yet supported.
+ if(state.style!=='ink'||!['overview','detail'].every(k=>livePreview.renderers[k]?.ready))return false;
  if(!livePreview.enabled){livePreview.lastDraw={};for(const key of ['overview','detail'])$(key+'Svg').classList.add('motion-active');}
  livePreview.enabled=true;livePreview.ending=false;return true;
 }
@@ -1809,7 +1817,7 @@ function drawLivePreview(){
  if(livePreview.frameTimes.length>80)livePreview.frameTimes.shift();
 }
 function stopLivePreviewWhenCurrent(){
- if(!livePreview.enabled||!livePreview.ending||drag||state.play||pending)return;
+ if(!livePreview.enabled||!livePreview.ending||drag||cameraGesture||state.play||pending)return;
  if(!['overview','detail'].every(key=>{
    const q=asyncViews[key];return !!q && q.ready && !q.busy && (!q.desired || q.committed===q.desired.revision);
  }))return;
@@ -1817,8 +1825,8 @@ function stopLivePreviewWhenCurrent(){
  for(const key of ['overview','detail'])$(key+'Svg').classList.remove('motion-active');
 }
 function finishLiveInteraction(){
- // Flush the last pose through the same vector path used during dragging.
- schedule();
+ if(livePreview.enabled)livePreview.ending=true;
+ schedule(); // Hide GPU when matching authoritative SVG is committed.
 }
 function applyWorkerResult(key,msg){
  const q=asyncViews[key];if(!q)return;
@@ -1915,9 +1923,9 @@ function scheduleRaster(){
 
 function refreshAsync(){
  const t0=performance.now();kinematics=evaluate();scene=flatten(sceneTree(state,kinematics));
- // The authoritative styled SVG is displayed for every camera/IK pose.
- // Workers may finish at a lower cadence than pointer input, but never switch
- // paint styles or omit outlines. Intermediate worker results remain visible.
+ // Both backends use the same camera, part colors, and feature curves.
+ if((drag||cameraGesture||state.play)&&asyncEnabled)showLivePreview();
+ if(livePreview.enabled)drawLivePreview();
  const shared=[state.theta,state.flip,...state.armQ,...state.target,state.ghost,state.hidden,state.style,state.selected,state.transparency,state.fragmentDebug].join('|');
  let issued=0;
  // Detail is prioritized first on the main thread, though both workers run concurrently.
@@ -2146,12 +2154,12 @@ document.addEventListener('DOMContentLoaded',()=>{
    setupMobileLayout();
    if(!mobileDevice){
      if(mobileLayoutQuery.matches){kinematics=evaluate();scene=flatten(sceneTree(state,kinematics));fitOverviewToScene();}
-     refresh();initAsyncWorkers();attachAsyncAPI();
+     refresh();initLivePreview();initAsyncWorkers();attachAsyncAPI();
    }else{
      kinematics=evaluate();scene=flatten(sceneTree(state,kinematics));
      fitOverviewToScene();
      views={};
-     initAsyncWorkers();attachAsyncAPI();
+     initLivePreview();initAsyncWorkers();attachAsyncAPI();
      if(asyncEnabled){
        refreshAsync(); // Exact SVG appears as soon as the first worker completes.
      }else{
