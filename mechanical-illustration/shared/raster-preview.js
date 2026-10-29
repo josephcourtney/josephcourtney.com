@@ -133,7 +133,7 @@ class RasterPreview{
   };
   const geometry=new Map();
   for(const part of scene.parts){
-    const analytic=part.analytic,base=rgb(style.colorForPart?.(part)||part.cssColor||'#a9c3bd');
+    const analytic=part.analytic,base=rgb(analytic?(part.cssColor||'#a9c3bd'):(style.colorForPart?.(part)||part.cssColor||'#a9c3bd'));
     const data={base};
     if(analytic){
       const R=analytic.world.R,T=analytic.world.t;
