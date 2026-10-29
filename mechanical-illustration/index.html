@@ -316,8 +316,8 @@ input[type=range]{width:100%;accent-color:#d56c43;cursor:pointer;height:22px;mar
   <header class="header">
     <div><div class="eyebrow">Vector Graphics Laboratory / Experiment 01</div>
     <h1>Stanford Bunny <span style="font-weight:380;color:#7c8ba1">/ native SVG</span></h1>
-    <div class="subtitle">Live 3D projection into SVG paths. No raster visibility buffer, WebGL, or WebGPU.</div></div>
-    <div class="header-marker">3D → 2D · SVG ONLY</div>
+    <div class="subtitle">Live 3D projection into SVG paths. Native vector extraction without raster-derived tracing.</div></div>
+    <div class="header-marker">3D · GPU INTERACTION / SVG EXPORT</div>
   </header>
   <nav class="suite-nav" aria-label="Illustration scene navigation">
   <a href="/mechanical-illustration/">Articulated mechanism</a>
@@ -2460,7 +2460,7 @@ requestAnimationFrame(frame);
   `;
   meshRoot.querySelector('.header .eyebrow').textContent='Vector Graphics Laboratory / Geometric SVG';
   meshRoot.querySelector('.header h1').innerHTML='3D vector illustration <span style="font-weight:380;color:#7c8ba1">/ exact line visibility</span>';
-  meshRoot.querySelector('.subtitle').textContent='Geometry-derived SVG silhouettes, sharp edges and tonal regions. No raster sampling, marching squares, or GPU rendering.';
+  meshRoot.querySelector('.subtitle').textContent='Depth-tested GPU illustration during movement; geometry-derived editable SVG when stationary.';
   meshRoot.querySelector('.viewer-label').lastChild.textContent=' LIVE GEOMETRIC SVG';
   const meshSection=[...meshRoot.querySelectorAll('.section-title')].find(x=>x.textContent.toLowerCase().includes('mesh resolution'))?.closest('.section');
   if(meshSection){
@@ -2709,6 +2709,7 @@ requestAnimationFrame(frame);
   // overlays. Palette colors are resolved from the live SVG CSS rules.
   let meshGPU=null,meshCanvas=null,meshRasterVisible=false;
   function hideMeshRaster(){
+    meshRoot.querySelector('.viewer-label').lastChild.textContent=' GEOMETRIC SVG';
     meshRasterVisible=false;
     if(meshCanvas)meshCanvas.style.display='none';
     layers.style.visibility='';
@@ -2736,6 +2737,7 @@ requestAnimationFrame(frame);
         lineWidth:parseFloat(getComputedStyle(svg).getPropertyValue('--lineWidth'))||VectorIllustrationCore.meshInkPolicy(selected.angular).silhouetteWidth,
         cssPxToScene:800/Math.max(1,svg.getBoundingClientRect().width)});
       meshCanvas.style.display='block';
+      meshRoot.querySelector('.viewer-label').lastChild.textContent=' GPU INTERACTION PREVIEW';
       layers.style.visibility='hidden';
       meshRasterVisible=true;
       return true;
