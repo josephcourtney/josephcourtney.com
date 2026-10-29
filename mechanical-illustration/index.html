@@ -400,7 +400,7 @@ window.__showMesh=false;
 window.__unifiedMeshRoot=document.getElementById('unified-mesh-host').attachShadow({mode:'open'});
 window.__unifiedMeshRoot.appendChild(document.getElementById('unified-mesh-template').content.cloneNode(true));
 </script>
-<script src="/mechanical-illustration/shared/vector-core.js?v=5"></script>
+<script src="/mechanical-illustration/shared/vector-core.js?v=6"></script>
 <script src="/mechanical-illustration/shared/raster-preview.js?v=1"></script>
 <script>/* Kinematics, part hierarchy and semantic SVG share the VectorIllustrationCore kernel. */
 (()=>{
@@ -2000,7 +2000,7 @@ function initAsyncWorkers(){
  let url;
  try {
    if(SCRIPT_SOURCE.length>10000){
-     url=URL.createObjectURL(new Blob(["importScripts("+JSON.stringify(location.origin+"/mechanical-illustration/shared/vector-core.js?v=5")+");\n",SCRIPT_SOURCE],{type:'text/javascript'}));
+     url=URL.createObjectURL(new Blob(["importScripts("+JSON.stringify(location.origin+"/mechanical-illustration/shared/vector-core.js?v=6")+");\n",SCRIPT_SOURCE],{type:'text/javascript'}));
      workerObjectURL=url;
    }else url=script?.src||'mechanism.js';
    for(const key of ['overview','detail']){
@@ -2552,7 +2552,10 @@ requestAnimationFrame(frame);
       const x1=mx+nx*dist,y1=my+ny*dist,x2=mx-nx*dist,y2=my-ny*dist;
       const z1=frontDepthAt(x1,y1,index),z2=frontDepthAt(x2,y2,index);
       if(!Number.isFinite(z1)||!Number.isFinite(z2))return true;
-      if(Math.abs(z1-z2)>inkPolicy.depthJump)return true;
+      const midInv=(a.inv+b.inv)*.5;
+      if(Math.abs(z1-z2)>inkPolicy.depthJump&&
+         Math.abs(Math.max(z1,z2)-midInv)<inkPolicy.depthNearTolerance&&
+         midInv-Math.min(z1,z2)>inkPolicy.depthBehind)return true;
     }
     return false;
   }
@@ -2804,7 +2807,7 @@ requestAnimationFrame(frame);
     dirty=false;
   }
   try{
-    geometryWorker=new Worker('/mechanical-illustration/shared/mesh-render-worker.js?v=4');
+    geometryWorker=new Worker('/mechanical-illustration/shared/mesh-render-worker.js?v=5');
     geometryWorker.onmessage=e=>{
       const msg=e.data;
       if(msg.type==='mesh-ready'){
