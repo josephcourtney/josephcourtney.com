@@ -2732,7 +2732,9 @@ requestAnimationFrame(frame);
       const ink=getComputedStyle(silhouettes).stroke;
       const edgeInk=getComputedStyle(creases).stroke;
       meshGPU.drawMesh(selected,camera,{palette,ink,crease:edgeInk,contours,
-        internal:showInternal,lineWidth:parseFloat(getComputedStyle(svg).getPropertyValue('--lineWidth'))||VectorIllustrationCore.meshInkPolicy(selected.angular).silhouetteWidth});
+        internal:showInternal,
+        lineWidth:parseFloat(getComputedStyle(svg).getPropertyValue('--lineWidth'))||VectorIllustrationCore.meshInkPolicy(selected.angular).silhouetteWidth,
+        cssPxToScene:800/Math.max(1,svg.getBoundingClientRect().width)});
       meshCanvas.style.display='block';
       layers.style.visibility='hidden';
       meshRasterVisible=true;
