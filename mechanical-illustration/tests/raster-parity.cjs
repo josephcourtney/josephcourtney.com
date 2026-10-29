@@ -10,6 +10,19 @@ const base=process.env.TEST_BASE||'http://127.0.0.1:8765/mechanical-illustration
 const dir=process.env.ARTIFACT_DIR||'render-test-artifacts';
 fs.mkdirSync(dir,{recursive:true});
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function inkCompare(a,b){
+ const svg=PNG.sync.read(a),gpu=PNG.sync.read(b);
+ const x0=Math.round(svg.width*.10),x1=Math.round(svg.width*.88);
+ const y0=Math.round(svg.height*.08),y1=Math.round(svg.height*.64);
+ const ink=p=>p[0]<100&&p[1]<120&&p[2]<115;
+ let svgInk=0,gpuInk=0,commonInk=0;
+ for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+  const i=(y*svg.width+x)*4,A=ink(svg.data.subarray(i,i+3)),B=ink(gpu.data.subarray(i,i+3));
+  if(A)svgInk++;if(B)gpuInk++;if(A&&B)commonInk++;
+ }
+ return {svgInkPixels:svgInk,gpuInkPixels:gpuInk,commonInkPixels:commonInk,
+   inkPixelRatio:gpuInk?+(svgInk/gpuInk).toFixed(2):null};
+}
 function compare(a,b){
  const x=PNG.sync.read(a),y=PNG.sync.read(b);
  assert.equal(x.width,y.width);assert.equal(x.height,y.height);
