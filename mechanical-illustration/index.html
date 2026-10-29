@@ -185,7 +185,7 @@ body[data-unified-scene="bunny"] > main.layout,body[data-unified-scene="housing"
 @media(max-width:660px){.unified-scene-nav{gap:5px;padding:9px}.unified-scene-nav button{flex:1;padding:10px 5px;font-size:11px}.unified-scene-note{width:100%;font-size:11px;margin-left:0}}
 </style><style>
 .svgviewport.motion-active > svg .semantic-model{visibility:hidden}
-.svgviewport.motion-active .motion-preview{transition:none!important}
+.svgviewport .motion-preview{transition:none!important}
 </style>
 </head>
 <body><header class="top"><div class="eyebrow">INTERACTIVE TECHNICAL STUDY · 01 / KINEMATICS</div><h1>Motion, made visible</h1><p>An incrementally rendered drawing laboratory: one closed four-bar mechanism, one spatial inverse-kinematics arm, curved geometric test features, and two independent views of the same 3D scene. Drag the blue crank pin or the rust-colored target.</p></header><nav class="unified-scene-nav" aria-label="Illustration scenes">
@@ -1765,7 +1765,7 @@ function initLivePreview(){
 }
 function showLivePreview(){
  // Other art treatments remain vector-only where matching is not yet supported.
- if(state.style!=='ink'||!['overview','detail'].every(k=>livePreview.renderers[k]?.ready))return false;
+ if(state.style!=='ink'||state.ghost||state.hidden||!['overview','detail'].every(k=>livePreview.renderers[k]?.ready))return false;
  if(!livePreview.enabled){livePreview.lastDraw={};for(const key of ['overview','detail'])$(key+'Svg').classList.add('motion-active');}
  livePreview.enabled=true;livePreview.ending=false;return true;
 }
@@ -2218,10 +2218,13 @@ function setLOD(name){
 }
 function render(){} // Installed by the geometry-native renderer before the first animation frame.
 function metrics(){
+  $('fps-value').parentElement.querySelector('.statlabel').textContent=(window.meshIllustrationRenderer?.previewActive?'GPU FPS':'SVG FPS');
   const fmt=n=>Number.isFinite(n)?n.toFixed(2)+' ms':'—';
-  $('fps-value').textContent=workerUsable
-    ? (lastSvgCommit&&performance.now()-lastSvgCommit<1200 ? (Math.round(svgFpsAvg)||'—') : '—')
-    : (Math.round(fpsAvg)||'—');
+  $('fps-value').textContent=window.meshIllustrationRenderer?.previewActive
+    ? (Math.round(fpsAvg)||'—')
+    : workerUsable
+      ? (lastSvgCommit&&performance.now()-lastSvgCommit<1200 ? (Math.round(svgFpsAvg)||'—') : '—')
+      : (Math.round(fpsAvg)||'—');
   $('total-value').textContent=cpuAvg.toFixed(1);
   $('projection-value').textContent=fmt(projAvg);
   $('paths-value').textContent=fmt(buildAvg);
