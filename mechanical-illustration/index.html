@@ -396,7 +396,7 @@ window.__showMesh=false;
 window.__unifiedMeshRoot=document.getElementById('unified-mesh-host').attachShadow({mode:'open'});
 window.__unifiedMeshRoot.appendChild(document.getElementById('unified-mesh-template').content.cloneNode(true));
 </script>
-<script src="/mechanical-illustration/shared/vector-core.js?v=3"></script>
+<script src="/mechanical-illustration/shared/vector-core.js?v=4"></script>
 <script>/* Kinematics, part hierarchy and semantic SVG share the VectorIllustrationCore kernel. */
 (()=>{
 'use strict';
@@ -1754,6 +1754,9 @@ function initLivePreview(){
  }
 }
 function showLivePreview(){
+ // Illustration fidelity is identical in motion and at rest. Do not activate
+ // an alternate Canvas/WebGL rendering path for a mechanism gesture.
+ return false;
  if(!Object.values(livePreview.renderers).every(r=>r.ready||r.ctx))return false;
  if(!livePreview.enabled){livePreview.lastDraw={};for(const key of ['overview','detail'])$(key+'Svg').classList.add('motion-active');}
  livePreview.enabled=true;livePreview.ending=false;return true;
@@ -1814,10 +1817,8 @@ function stopLivePreviewWhenCurrent(){
  for(const key of ['overview','detail'])$(key+'Svg').classList.remove('motion-active');
 }
 function finishLiveInteraction(){
- if(mobilePreviewOnly)return;
- if(!livePreview.enabled)return;
- livePreview.ending=true;
- schedule(); // Ensure final pointer coordinates are included before preview disappears.
+ // Flush the last pose through the same vector path used during dragging.
+ schedule();
 }
 function applyWorkerResult(key,msg){
  const q=asyncViews[key];if(!q)return;
@@ -1829,15 +1830,20 @@ function applyWorkerResult(key,msg){
    disableAsyncAndFallback(msg.message);return;
  }
  if(msg.kind==='export')return;
- if(!q.desired || (msg.revision!==q.desired.revision &&
-     (JSON.stringify(completedJob?.camera)!==JSON.stringify(q.desired.camera)||
-      JSON.stringify(completedJob?.options)!==JSON.stringify(q.desired.options)))){
-   // Only discard if the camera or presentation mode changed. A superseded
-   // *pose* is still useful: displaying it prevents a frozen SVG during drag.
+ // Display valid intermediate camera and joint poses instead of discarding
+ // each worker result while a finger is still moving. Each camera has one
+ // ordered worker; the next queued pose is submitted after this frame.
+ if(!completedJob||!VectorIllustrationCore.frameMayCommit({
+   sceneVersion:0,activeSceneVersion:0,
+   revision:msg.revision,lastCommitted:q.committed
+ })){
    asyncCounters[key].dropped++;q.needsResync=true;sendLatest(key);return;
  }
  const t0=performance.now();
- const camera=viewCfg[key]();
+ // Use the camera that actually generated the paths, not the newest camera
+ // which may already be several pointer events ahead.
+ const c=completedJob.camera;
+ const camera=makeCamera(c.az,c.el,c.target,c.scale,c.w,c.h);
  try{
    const priorParts=retainedDOM.get(key)?.parts||new Map();
    const partMarkup=new Map(priorParts);for(const [id,markup] of msg.patchParts)partMarkup.set(id,markup);
@@ -1909,8 +1915,9 @@ function scheduleRaster(){
 
 function refreshAsync(){
  const t0=performance.now();kinematics=evaluate();scene=flatten(sceneTree(state,kinematics));
- if((drag||state.play)&&asyncEnabled)showLivePreview();
- if(livePreview.enabled)drawLivePreview();
+ // The authoritative styled SVG is displayed for every camera/IK pose.
+ // Workers may finish at a lower cadence than pointer input, but never switch
+ // paint styles or omit outlines. Intermediate worker results remain visible.
  const shared=[state.theta,state.flip,...state.armQ,...state.target,state.ghost,state.hidden,state.style,state.selected,state.transparency,state.fragmentDebug].join('|');
  let issued=0;
  // Detail is prioritized first on the main thread, though both workers run concurrently.
@@ -1951,16 +1958,18 @@ function releaseWorkerURL(){
 function disableAsyncAndFallback(reason){
  console.warn('Vector workers unavailable:',reason);
  asyncEnabled=false;
+ mobilePreviewOnly=false;
+ livePreview.enabled=false;
+ for(const key of ['overview','detail'])$(key+'Svg').classList.remove('motion-active');
  if(workerStartupTimer)clearTimeout(workerStartupTimer);
  for(const q of Object.values(asyncViews)){try{q?.worker?.terminate();}catch(e){}}
  releaseWorkerURL();
- if(mobileDevice){
-   mobilePreviewOnly=true;
-   $('workerStatus').textContent='Live interactive preview · SVG export available · workers unavailable';
-   schedule();
- }else{schedule();}
+ $('workerStatus').textContent='Vector workers unavailable · synchronous native SVG fallback';
+ schedule();
 }
 function refreshMobilePreview(){
+ // Retained for compatibility; mobile uses the same vector renderer as desktop.
+ return refresh();
  kinematics=evaluate();scene=flatten(sceneTree(state,kinematics));
  showLivePreview();drawLivePreview();
  scheduleRaster();
@@ -1977,7 +1986,7 @@ function initAsyncWorkers(){
  let url;
  try {
    if(SCRIPT_SOURCE.length>10000){
-     url=URL.createObjectURL(new Blob(["importScripts("+JSON.stringify(location.origin+"/mechanical-illustration/shared/vector-core.js?v=3")+");\n",SCRIPT_SOURCE],{type:'text/javascript'}));
+     url=URL.createObjectURL(new Blob(["importScripts("+JSON.stringify(location.origin+"/mechanical-illustration/shared/vector-core.js?v=4")+");\n",SCRIPT_SOURCE],{type:'text/javascript'}));
      workerObjectURL=url;
    }else url=script?.src||'mechanism.js';
    for(const key of ['overview','detail']){
@@ -2014,7 +2023,7 @@ function initAsyncWorkers(){
  // IMPORTANT: Never revoke the Blob URL until BOTH workers acknowledged
  // startup. Safari may load worker source asynchronously after new Worker().
 }
-function schedule(){if(pending)return;pending=true;requestAnimationFrame(()=>{pending=false;try{if(asyncEnabled)refreshAsync();else if(mobilePreviewOnly)refreshMobilePreview();else refresh();}catch(e){console.error(e);$('summary').textContent='Render error: '+e.message;}});}
+function schedule(){if(pending)return;pending=true;requestAnimationFrame(()=>{pending=false;try{if(asyncEnabled)refreshAsync();else refresh();}catch(e){console.error(e);$('summary').textContent='Render error: '+e.message;}});}
 
 function screenForEvent(e,svg){const rect=svg.getBoundingClientRect(),box=svg.viewBox?.baseVal||{width:790,height:510};return {x:(e.clientX-rect.left)/rect.width*box.width,y:(e.clientY-rect.top)/rect.height*box.height};}
 let cameraGesture=null,activePointers=new Map();
@@ -2137,18 +2146,16 @@ document.addEventListener('DOMContentLoaded',()=>{
    setupMobileLayout();
    if(!mobileDevice){
      if(mobileLayoutQuery.matches){kinematics=evaluate();scene=flatten(sceneTree(state,kinematics));fitOverviewToScene();}
-     refresh();initLivePreview();initAsyncWorkers();attachAsyncAPI();
+     refresh();initAsyncWorkers();attachAsyncAPI();
    }else{
-     initLivePreview();
      kinematics=evaluate();scene=flatten(sceneTree(state,kinematics));
      fitOverviewToScene();
      views={};
      initAsyncWorkers();attachAsyncAPI();
      if(asyncEnabled){
-       showLivePreview();livePreview.ending=true;
-       refreshAsync(); // Workers compute exact SVG while the canvas is visible.
+       refreshAsync(); // Exact SVG appears as soon as the first worker completes.
      }else{
-       mobilePreviewOnly=true;refreshMobilePreview();
+       mobilePreviewOnly=false;refresh(); // Same native SVG fallback as desktop.
      }
    }
  }catch(e){
@@ -2274,6 +2281,9 @@ function finishMeshPointer(e){
   activeGesturePointers.delete(e.pointerId);
   starting.dist=0;
   try{if(svg.hasPointerCapture(e.pointerId))svg.releasePointerCapture(e.pointerId);}catch(_){}
+  // The final camera pose receives the same full-quality render as every
+  // intermediate one, without requiring a quality switch.
+  if(activeGesturePointers.size===0){dirty=true;window.__meshSyncPreview?.('interaction');}
 }
 svg.addEventListener('pointerdown',beginMeshPointer);
 window.addEventListener('pointermove',moveMeshPointer,{passive:false});
@@ -2681,21 +2691,24 @@ requestAnimationFrame(frame);
   // asynchronous frame. One synchronous render on export is acceptable.
   $('export-svg').addEventListener('click',()=>synchronousRender(),{capture:true});
   let geometryWorker=null,workerUsable=false,workerBusy=false,meshVersion=0;
-  let previousMesh=null,readyVersion=0,lastRevision=0,pendingFrame=null;
+  let previousMesh=null,readyVersion=0,lastRevision=0,pendingFrame=null,lastDisplayedRevision=0;
   let minAcceptRevision=0, workerTimer=null, workerInitTimer=null, previewAt=0;
   // A worker can be slow to start or fail silently on mobile WebKit. Immediate
   // native-SVG rendering guarantees that controls remain functional regardless.
   window.__meshSyncPreview=(kind='interaction')=>{
     if(!window.__showMesh||!selected)return;
-    minAcceptRevision=lastRevision+1;
+    // The selected geometry and SVG styling are invariant during interaction.
+    // Native SVG is always the displayed representation. Off-thread rendering
+    // computes the exact latest pose without temporarily swapping mesh LOD.
+    if(geometryWorker&&workerUsable){
+      workerRender();
+      if(kind==='interaction')return;
+    }
     const now=performance.now();
     if(kind==='interaction'&&now-previewAt<85)return;
     previewAt=now;
-    const target=selected;
-    if(kind==='interaction'&&!target.angular&&lod==='full')selected=prepareMesh('fast');
     try{synchronousRender();}
-    catch(e){console.error('Direct SVG preview failed:',e);}
-    finally{selected=target;dirty=true;}
+    catch(e){console.error('Native SVG render failed:',e);}
   };
   function submitFrame(request){
     if(!geometryWorker||!workerUsable||workerBusy||readyVersion!==meshVersion)return;
@@ -2725,6 +2738,7 @@ requestAnimationFrame(frame);
     if(!geometryWorker||!workerUsable){synchronousRender();return;}
     if(previousMesh!==selected){
       previousMesh=selected;readyVersion=0;meshVersion++;pendingFrame=null;
+      lastDisplayedRevision=0;
       geometryWorker.postMessage({type:'mesh',version:meshVersion,mesh:selected,family:currentFamily});
     }
     pendingFrame=buildRequest();
@@ -2732,7 +2746,7 @@ requestAnimationFrame(frame);
     dirty=false;
   }
   try{
-    geometryWorker=new Worker('/mechanical-illustration/shared/mesh-render-worker.js?v=2');
+    geometryWorker=new Worker('/mechanical-illustration/shared/mesh-render-worker.js?v=3');
     geometryWorker.onmessage=e=>{
       const msg=e.data;
       if(msg.type==='mesh-ready'){
@@ -2744,7 +2758,11 @@ requestAnimationFrame(frame);
       else if(msg.type==='frame'){
         workerBusy=false;
         if(workerTimer){clearTimeout(workerTimer);workerTimer=null;}
-        if(msg.version===meshVersion && msg.revision>=minAcceptRevision){
+        if(VectorIllustrationCore.frameMayCommit({
+          sceneVersion:msg.version,activeSceneVersion:meshVersion,
+          revision:msg.revision,lastCommitted:lastDisplayedRevision
+        })){
+          lastDisplayedRevision=msg.revision;
           const t=performance.now();
           if(lastSvgCommit){
             const dt=t-lastSvgCommit;
