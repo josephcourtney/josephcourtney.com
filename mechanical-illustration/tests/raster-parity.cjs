@@ -50,7 +50,9 @@ function compare(a,b){
   assert(success,'GPU preview unavailable in Chromium');
   const gpuImage=await page.locator('#unified-mesh-host .viewer').screenshot({timeout:30000});
   fs.writeFileSync(dir+'/bunny-raster.png',gpuImage);
-  findings.push({scene:'bunny',parity:compare(svgImage,gpuImage)});
+  const bunnyParity=compare(svgImage,gpuImage);
+  assert(bunnyParity.changedPct<3.0,'Bunny raster/SVG parity regressed: '+JSON.stringify(bunnyParity));
+  findings.push({scene:'bunny',parity:bunnyParity});
   await page.evaluate(()=>window.meshIllustrationRenderer.cancelPreview());
   const before=await page.evaluate(()=>window.meshIllustrationRenderer.camera);
   const box=await page.locator('#unified-mesh-host #bunny-svg').boundingBox();
@@ -67,9 +69,15 @@ function compare(a,b){
   findings.push({scene:'bunny',orbit:true,fullResolutionStable:true,rasterHiddenAfterSettle:true});
   await page.locator('[data-unified-target="housing"]').click();
   await page.waitForFunction(()=>window.meshIllustrationRenderer?.sceneType==='housing',{timeout:30000});
+  await page.waitForFunction(()=>!window.meshIllustrationRenderer?.previewActive,{timeout:30000});
+  const housingSVG=await page.locator('#unified-mesh-host .viewer').screenshot({timeout:30000});
+  fs.writeFileSync(dir+'/housing-svg.png',housingSVG);
   const hRes=await page.evaluate(()=>window.__meshDrawRaster?.()===true);
   assert(hRes,'machined housing GPU preview failed');
-  findings.push({scene:'housing',raster:true});
+  const housingGPU=await page.locator('#unified-mesh-host .viewer').screenshot({timeout:30000});
+  fs.writeFileSync(dir+'/housing-raster.png',housingGPU);
+  const housingParity=compare(housingSVG,housingGPU);
+  findings.push({scene:'housing',raster:true,parity:housingParity});
   await page.evaluate(()=>window.meshIllustrationRenderer.cancelPreview());
   await page.locator('[data-unified-target="mechanism"]').click();
   await page.waitForFunction(()=>!!window.demo?.scene?.parts?.length,{timeout:30000});
@@ -98,7 +106,9 @@ function compare(a,b){
   assert(previewReady,'mechanism preview capture not exposed');
   const mechanicalGPU=await page.locator('#overviewSvg').screenshot({timeout:30000});
   fs.writeFileSync(dir+'/mechanism-raster.png',mechanicalGPU);
-  findings.push({scene:'mechanism',parity:compare(mechanicalSVG,mechanicalGPU)});
+  const mechParity=compare(mechanicalSVG,mechanicalGPU);
+  assert(mechParity.changedPct<4.0,'Mechanism raster/SVG parity regressed: '+JSON.stringify(mechParity));
+  findings.push({scene:'mechanism',parity:mechParity});
   await page.evaluate(()=>document.getElementById('overviewSvg').classList.remove('motion-active'));
   assert(!errors.length,errors.join('\n'));
   console.log(JSON.stringify({status:'PASS',results:findings},null,2));
