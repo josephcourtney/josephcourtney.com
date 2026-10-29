@@ -84,6 +84,21 @@ function compare(a,b){
   }));
   assert(state.hasRasterBackend&&state.hasVectorCore&&state.canvasCount>=2,'unified mechanism preview not initialized');
   findings.push({scene:'mechanism',...state});
+  // Compare the same orthographic camera in SVG and the live GPU buffer.
+  // No animation, camera movement, or LOD change occurs between captures.
+  const mechanicalSVG=await page.locator('#overviewSvg').screenshot({timeout:30000});
+  fs.writeFileSync(dir+'/mechanism-svg.png',mechanicalSVG);
+  const previewReady=await page.evaluate(()=>{
+    const image=window.demo?.capturePreview?.('overview');
+    if(!image)return false;
+    document.getElementById('overviewSvg').classList.add('motion-active');
+    return true;
+  });
+  assert(previewReady,'mechanism preview capture not exposed');
+  const mechanicalGPU=await page.locator('#overviewSvg').screenshot({timeout:30000});
+  fs.writeFileSync(dir+'/mechanism-raster.png',mechanicalGPU);
+  findings.push({scene:'mechanism',parity:compare(mechanicalSVG,mechanicalGPU)});
+  await page.evaluate(()=>document.getElementById('overviewSvg').classList.remove('motion-active'));
   assert(!errors.length,errors.join('\n'));
   console.log(JSON.stringify({status:'PASS',results:findings},null,2));
  }finally{await browser.close();}
