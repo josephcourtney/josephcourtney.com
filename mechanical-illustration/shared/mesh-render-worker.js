@@ -1,6 +1,6 @@
 /* Off-main-thread geometry-native SVG rendering. */
 'use strict';
-importScripts('/mechanical-illustration/shared/vector-core.js?v=5');
+importScripts('/mechanical-illustration/shared/vector-core.js?v=6');
 const CAM_D=3.65, DEPTH_LAYERS=1;
 let selected=null, contours=true, wire=false, showInternal=true, showSuggestive=false;
 let camera={yaw:0,pitch:-.12,zoom:1},visible=0,currentFamily='bunny';
@@ -48,7 +48,13 @@ const hypo=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
       const x1=mx+nx*dist,y1=my+ny*dist,x2=mx-nx*dist,y2=my-ny*dist;
       const z1=frontDepthAt(x1,y1,index),z2=frontDepthAt(x2,y2,index);
       if(!Number.isFinite(z1)||!Number.isFinite(z2))return true;
-      if(Math.abs(z1-z2)>inkPolicy.depthJump)return true;
+      // A smooth, steeply sloping surface also has a depth difference.
+      // Only treat this edge as an overlap when one side remains at the
+      // edge's foreground depth and the other side is genuinely behind it.
+      const midInv=(a.inv+b.inv)*.5;
+      if(Math.abs(z1-z2)>inkPolicy.depthJump&&
+         Math.abs(Math.max(z1,z2)-midInv)<inkPolicy.depthNearTolerance&&
+         midInv-Math.min(z1,z2)>inkPolicy.depthBehind)return true;
     }
     return false;
   }
