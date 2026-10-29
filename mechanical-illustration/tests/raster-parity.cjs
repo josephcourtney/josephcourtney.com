@@ -92,6 +92,7 @@ function compare(a,b){
     const image=window.demo?.capturePreview?.('overview');
     if(!image)return false;
     document.getElementById('overviewSvg').classList.add('motion-active');
+    window.demo.updatePreviewHandles?.('overview');
     return true;
   });
   assert(previewReady,'mechanism preview capture not exposed');
