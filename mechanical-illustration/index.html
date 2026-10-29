@@ -2235,7 +2235,7 @@ function frame(t){
   const dt=lastTime?Math.min(.10,(t-lastTime)/1000):0;
   if(lastTime){const inst=1/dt; if(Number.isFinite(inst)&&dt>.002)fpsAvg+=(inst-fpsAvg)*(frames<10?.25:.05)}
   lastTime=t;
-  if(spin){camera.yaw+=dt*spin;dirty=true;}
+  if(spin){camera.yaw+=dt*spin;dirty=true;window.__meshDrawRaster?.();}
   if(dirty)render();
   frames++;
   if(t-lastMetrics>350){metrics();lastMetrics=t;}
@@ -2291,7 +2291,7 @@ function finishMeshPointer(e){
   try{if(svg.hasPointerCapture(e.pointerId))svg.releasePointerCapture(e.pointerId);}catch(_){}
   // The final camera pose receives the same full-quality render as every
   // intermediate one, without requiring a quality switch.
-  if(activeGesturePointers.size===0){dirty=true;window.__meshSyncPreview?.('interaction');}
+  if(activeGesturePointers.size===0){dirty=true;window.__meshSyncPreview?.('settle');}
 }
 svg.addEventListener('pointerdown',beginMeshPointer);
 window.addEventListener('pointermove',moveMeshPointer,{passive:false});
@@ -2693,6 +2693,40 @@ requestAnimationFrame(frame);
   // Keep the SVG authoritative while constructing its paths off the UI thread.
   // One in-flight render at a time; newer camera poses replace the pending pose.
   const synchronousRender=render;
+  // Shared WebGL draws only model geometry; native SVG retains background and
+  // overlays. Palette colors are resolved from the live SVG CSS rules.
+  let meshGPU=null,meshCanvas=null,meshRasterVisible=false;
+  function hideMeshRaster(){
+    meshRasterVisible=false;
+    if(meshCanvas)meshCanvas.style.display='none';
+    layers.style.visibility='';
+  }
+  function drawMeshRaster(){
+    if(!window.__showMesh||!selected||!window.VectorRasterPreview)return false;
+    if(!meshGPU){
+      try{
+        meshCanvas=document.createElement('canvas');
+        meshCanvas.setAttribute('aria-hidden','true');
+        meshCanvas.className='raster-geometry-preview';
+        Object.assign(meshCanvas.style,{position:'absolute',inset:'0',width:'100%',
+          height:'100%',pointerEvents:'none',zIndex:'1',display:'none'});
+        meshGPU=new VectorRasterPreview(meshCanvas);
+        svg.parentElement.appendChild(meshCanvas);
+      }catch(err){console.warn('Mesh GPU preview unavailable:',err);meshGPU=null;return false;}
+    }
+    try{
+      const palette=paint[0].map(p=>getComputedStyle(p).fill);
+      const ink=getComputedStyle(silhouettes).stroke;
+      const edgeInk=getComputedStyle(creases).stroke;
+      meshGPU.drawMesh(selected,camera,{palette,ink,crease:edgeInk,contours,
+        internal:showInternal,lineWidth:parseFloat(getComputedStyle(svg).getPropertyValue('--lineWidth'))||1.9});
+      meshCanvas.style.display='block';
+      layers.style.visibility='hidden';
+      meshRasterVisible=true;
+      return true;
+    }catch(err){console.error('Mesh GPU render failed:',err);hideMeshRaster();return false;}
+  }
+  window.__meshDrawRaster=drawMeshRaster;
   let lastSvgCommit=0,svgFpsAvg=0;
   $('fps-value').parentElement.querySelector('.statlabel').textContent='SVG FPS';
   // A downloaded SVG must represent the current pose, not the last completed
@@ -2705,18 +2739,14 @@ requestAnimationFrame(frame);
   // native-SVG rendering guarantees that controls remain functional regardless.
   window.__meshSyncPreview=(kind='interaction')=>{
     if(!window.__showMesh||!selected)return;
-    // The selected geometry and SVG styling are invariant during interaction.
-    // Native SVG is always the displayed representation. Off-thread rendering
-    // computes the exact latest pose without temporarily swapping mesh LOD.
-    if(geometryWorker&&workerUsable){
-      workerRender();
-      if(kind==='interaction')return;
-    }
+    const gpu=drawMeshRaster();
+    if(geometryWorker&&workerUsable){workerRender();return;}
+    // Portable fallback: exact native SVG if WebGL or workers are unavailable.
     const now=performance.now();
     if(kind==='interaction'&&now-previewAt<85)return;
     previewAt=now;
-    try{synchronousRender();}
-    catch(e){console.error('Native SVG render failed:',e);}
+    try{synchronousRender();hideMeshRaster();}
+    catch(err){console.error('SVG render failed:',err);}
   };
   function submitFrame(request){
     if(!geometryWorker||!workerUsable||workerBusy||readyVersion!==meshVersion)return;
@@ -2734,6 +2764,7 @@ requestAnimationFrame(frame);
   }
   function fallback(reason){
     if(geometryWorker){geometryWorker.terminate();geometryWorker=null;}
+    if(meshRasterVisible&&activeGesturePointers.size===0&&spin===0)hideMeshRaster();
     workerUsable=false;workerBusy=false;pendingFrame=null;readyVersion=0;
     if(workerTimer){clearTimeout(workerTimer);workerTimer=null;}
     if(workerInitTimer){clearTimeout(workerInitTimer);workerInitTimer=null;}
@@ -2741,9 +2772,11 @@ requestAnimationFrame(frame);
     dirty=true;
   }
   function workerRender(){
-    if(!selected)return;
-    if(window.__showMesh===false)return;
-    if(!geometryWorker||!workerUsable){synchronousRender();return;}
+    if(!selected||window.__showMesh===false)return;
+    // SVG work is deferred while input changes continuously. Selected geometry
+    // is never decimated; WebGL is responsible for fast moving frames.
+    if(meshRasterVisible&&(activeGesturePointers.size>0||spin!==0)){dirty=false;return;}
+    if(!geometryWorker||!workerUsable){synchronousRender();hideMeshRaster();return;}
     if(previousMesh!==selected){
       previousMesh=selected;readyVersion=0;meshVersion++;pendingFrame=null;
       lastDisplayedRevision=0;
@@ -2794,6 +2827,8 @@ requestAnimationFrame(frame);
           cpuAvg+=(msg.totalMs+delta-cpuAvg)*alpha;
         }
         if(pendingFrame&&readyVersion===meshVersion){const req=pendingFrame;pendingFrame=null;submitFrame(req);}
+        else if(msg.version===meshVersion&&msg.revision===lastRevision&&
+          activeGesturePointers.size===0&&spin===0)hideMeshRaster();
       }
     };
     geometryWorker.onerror=e=>fallback(e.message);
@@ -2814,6 +2849,8 @@ requestAnimationFrame(frame);
     get selectedMesh(){return selected;},
     get camera(){return {...camera};},
     selectScene:selectFamily,
+    get previewActive(){return meshRasterVisible;},
+    cancelPreview:hideMeshRaster,
     render:()=>{dirty=true;render();}
   };
   selectFamily('bunny');
@@ -2834,6 +2871,7 @@ requestAnimationFrame(frame);
     if(!['mechanism','bunny','housing'].includes(which))which='mechanism';
     document.body.dataset.unifiedScene=which;
     window.__showMesh=which!=='mechanism';
+    if(which==='mechanism')window.meshIllustrationRenderer?.cancelPreview?.();
     btns.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.unifiedTarget===which)));
     note.textContent=which==='mechanism'?'Articulated assembly · kinematics & editable SVG':
       which==='bunny'?'Organic 3D mesh · geometric SVG': 'Concave planar housing · geometric SVG';
