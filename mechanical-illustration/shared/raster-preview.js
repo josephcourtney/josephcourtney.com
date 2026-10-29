@@ -70,7 +70,13 @@ class RasterPreview{
  drawMesh(mesh,camera,style={}){
   const m=mesh,n=m.nv,v=m.v,f=m.f,normal=m.vectorNormals||m.normals;
   if(!m||!normal)return;
-  const w=800,h=610,CAM=3.65;
+  const CAM=3.65;
+  // Native SVG strokes are sized in CSS pixels. Render into a backing buffer
+  // with matching screen density instead of stretching a fixed 800px bitmap.
+  const cssWidth=this.canvas.getBoundingClientRect?.().width||800;
+  const dpr=Math.max(1,Math.min(2,root.devicePixelRatio||1));
+  const rasterScale=Math.max(.5,Math.min(2.5,cssWidth*dpr/800));
+  const w=Math.round(800*rasterScale),h=Math.round(610*rasterScale);
   this.begin(w,h,true,style.palette);
   const cy=Math.cos(camera.yaw),sy=Math.sin(camera.yaw),cp=Math.cos(camera.pitch),sp=Math.sin(camera.pitch);
   const p=new Array(n),l=new Float32Array(n);
@@ -79,7 +85,7 @@ class RasterPreview{
    const X=cy*x+sy*z,Z=-sy*x+cy*z,Y=cp*y-sp*Z,ZZ=sp*y+cp*Z;
    const NX=cy*nx+sy*nz,NZ=-sy*nx+cy*nz,NY=cp*ny-sp*NZ,NZZ=sp*ny+cp*NZ;
    const inv=1/(CAM-ZZ),factor=235*camera.zoom*CAM*inv;
-   p[i]={x:400+X*factor,y:296-Y*factor,depth:ZZ,inv};
+   p[i]={x:(400+X*factor)*rasterScale,y:(296-Y*factor)*rasterScale,depth:ZZ,inv};
    l[i]=.22+.78*Math.max(0,-.39*NX+.65*NY+.65*NZZ);
   }
   const faceFront=new Uint8Array(m.nf),fills=[],lines=[];
@@ -109,7 +115,7 @@ class RasterPreview{
     const d=m.normals[a]*m.normals[b]+m.normals[a+1]*m.normals[b+1]+m.normals[a+2]*m.normals[b+2];
     sharp=d<threshold;
    }
-   if((sil&& (A||B))||sharp)quad(lines,p[e.p],p[e.q],(sil?(style.lineWidth??inkPolicy.silhouetteWidth):inkPolicy.creaseWidth)*(style.cssPxToScene||1),silhouette&&sil?silhouette:crease);
+   if((sil&& (A||B))||sharp)quad(lines,p[e.p],p[e.q],(sil?(style.lineWidth??inkPolicy.silhouetteWidth):inkPolicy.creaseWidth)*(style.cssPxToScene||1)*rasterScale,silhouette&&sil?silhouette:crease);
   }
   this.drawGeometry(fills,lines,true);
  }
