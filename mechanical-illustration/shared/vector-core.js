@@ -321,6 +321,14 @@ function mergedFillPath(polygons,{precision=3}={}){
  }
  return {d:rings.map(p=>pathData(p,{precision})).join(' '),boundaryEdges:count-removed,removedEdges:removed,subpaths:rings.length};
 }
+
+// Shared interaction-frame policy for both the articulated scene and mesh scenes.
+// Geometry fidelity and CSS styling are never changed by interaction state.
+// Intermediate worker frames are displayed in revision order, while newer
+// requested camera/pose frames replace queued work.
+function frameMayCommit({sceneVersion=0,activeSceneVersion=0,revision=0,lastCommitted=0}={}){
+ return sceneVersion===activeSceneVersion&&Number.isFinite(revision)&&revision>lastCommitted;
+}
 function compileSVG(scene,{width=800,height=610,style='',paper='#f9f7ef',title='Vector illustration',precision=2,tonalLevels=[],includeHidden=false}={}){
  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
  const parts=scene.parts||[...new Set(scene.faces.map(f=>f.owner))].map(id=>({id,color:'#a9c3bd'}));
@@ -341,7 +349,7 @@ function compileSVG(scene,{width=800,height=610,style='',paper='#f9f7ef',title='
  }
  return svg+'</svg>';
 }
-root.VectorIllustrationCore=Object.freeze({...K,version:'2.1.0',visibleSurfaces,visibleFeatures,renderProjectedScene,pathData,mergedFillPath,compileSVG});
+root.VectorIllustrationCore=Object.freeze({...K,version:'2.2.0',frameMayCommit,visibleSurfaces,visibleFeatures,renderProjectedScene,pathData,mergedFillPath,compileSVG});
 })(typeof self!=='undefined'?self:globalThis);
 
 if(typeof module!=='undefined'&&module.exports)module.exports=globalThis.VectorIllustrationCore;
