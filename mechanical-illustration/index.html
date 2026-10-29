@@ -1758,7 +1758,13 @@ function initLivePreview(){
      host.appendChild(canvas);host.appendChild(controls);
      livePreview.canvases[key]=canvas;livePreview.controls[key]=controls;
      livePreview.renderers[key]={ready:true,canvas,draw:(model,camera)=>{
-       gpu.drawMechanism(model,camera,{features:allFeatures,selected:state.selected});
+       gpu.drawMechanism(model,camera,{
+         features:allFeatures,selected:state.selected,
+         colorForPart:p=>{
+           const node=$(key+'Svg').querySelector('#part-'+p.id);
+           return node?getComputedStyle(node).fill:p.cssColor;
+         }
+       });
      }};
    }catch(err){console.warn('Illustration raster preview unavailable:',err);}
  }
@@ -2137,6 +2143,7 @@ function attachAsyncAPI(){if(!window.demo)window.demo={state,scene,views,kinemat
  };
  window.demo.captureRaster=()=>renderer.canvas.toDataURL('image/png');
  window.demo.capturePreview=(key='overview')=>{const r=livePreview.renderers[key];if(r.ready)r.draw(scene,viewCfg[key](),state.ghost);else drawMotion2D(r,scene,viewCfg[key](),state.ghost);return r.canvas.toDataURL('image/png');};
+ window.demo.updatePreviewHandles=key=>updateLiveHandles(key||'overview');
  window.demo.getMotionStats=()=>({styledPreview:true,secondaryFramesSkipped:livePreview.skipped,active:livePreview.enabled,ready:Object.fromEntries(Object.entries(livePreview.renderers).map(([k,v])=>[k,v.ready?'WebGL':v.ctx?'Canvas2D':'none'])),frames:livePreview.frames,finishes:livePreview.finishes,frameTimes:livePreview.frameTimes.slice()});
  window.demo.getAsyncStats=()=>({enabled:asyncEnabled,cameras:Object.fromEntries(Object.entries(asyncViews).map(([k,v])=>[k,{ready:v?.ready,busy:v?.busy,desired:v?.desired?.revision,committed:v?.committed,error:v?.error,...asyncCounters[k]}]))});
  window.demo.setAsyncEnabled=v=>{asyncEnabled=Boolean(v)&&Object.values(asyncViews).every(q=>q?.ready);};
