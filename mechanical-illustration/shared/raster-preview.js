@@ -117,17 +117,73 @@ class RasterPreview{
   const fills=[],lines=[],selected=style.selected;
   const ink=rgb(style.ink||'#293b36'),crease=rgb(style.crease||'#36443e');
   const projected=point=>{const p=camera.project(point);return {x:p.x,y:p.y,depth:p.d,inv:1};};
-  for(const part of scene.parts){
-   const col=rgb(part.cssColor||'#a9c3bd');
-   for(const face of part.faces){
-    if(face.worldNormal.reduce((sum,x,j)=>sum+x*camera.front[j],0)<=1e-6)continue;
-    const pp=face.worldPts.map(projected);
-    for(let i=1;i<pp.length-1;i++){
-      for(const q of [pp[0],pp[i],pp[i+1]])fills.push(q.x,q.y,q.depth,q.inv,1,...col);
+  const dot=(a,b)=>a.reduce((v,x,j)=>v+x*b[j],0);
+  const rotated=(R,p)=>R.map(row=>dot(row,p));
+  const mix=(a,b,t)=>a.map((c,j)=>c*(1-t)+b[j]*t);
+  const shade=(c,a)=>c.map(v=>a>=0?v+(1-v)*a:v*(1+a));
+  const palette=(base,stops,t)=>{
+    const x=clamp(t,0,1);
+    for(let i=1;i<stops.length;i++){
+      if(x<=stops[i][0]){
+        const u=(x-stops[i-1][0])/(stops[i][0]-stops[i-1][0]);
+        return mix(shade(base,stops[i-1][1]),shade(base,stops[i][1]),u);
+      }
     }
-   }
+    return shade(base,stops[stops.length-1][1]);
+  };
+  const geometry=new Map();
+  for(const part of scene.parts){
+    const analytic=part.analytic,base=rgb(part.cssColor||'#a9c3bd');
+    const data={base};
+    if(analytic){
+      const R=analytic.world.R,T=analytic.world.t;
+      const world=p=>rotated(R,p).map((x,j)=>x+T[j]);
+      if(analytic.type==='cylinder'){
+        const vx=rotated(R,[1,0,0]),vy=rotated(R,[0,1,0]);
+        const t=Math.atan2(dot(camera.front,vy),dot(camera.front,vx));
+        const q=rotated(R,[-Math.sin(t),Math.cos(t),0]);
+        const center=projected(world([analytic.cx,analytic.cy,(analytic.z0+analytic.z1)/2]));
+        const span=analytic.r*camera.scale;
+        const dx=dot(q,camera.right)*span,dy=-dot(q,camera.up)*span;
+        data.gradient={x:center.x-dx,y:center.y-dy,dx:2*dx,dy:2*dy};
+      }else if(analytic.type==='sphere'){
+        const c=projected(world([analytic.cx,analytic.cy,analytic.cz]));
+        data.radial={x:c.x,y:c.y,r:Math.max(1,analytic.r*camera.scale)};
+      }
+    }
+    geometry.set(part.id,data);
+    for(const face of part.faces){
+      const illum=dot(face.worldNormal,[-.42,-.58,.70])/
+        Math.hypot(-.42,-.58,.70);
+      if(dot(face.worldNormal,camera.front)<=1e-6)continue;
+      const ps=face.worldPts.map(projected);
+      const baseColor=()=>{
+        const shadow=clamp(.10-.12*illum,0,.22);
+        const light=clamp(.025+.035*illum,0,.055);
+        if(shadow>.025)return mix(base,rgb('#24352d'),shadow);
+        if(light>.016)return mix(base,[1,1,1],light);
+        return base;
+      };
+      const colors=ps.map(p=>{
+        if(data.gradient&&face.kind==='cylindrical'){
+          const g=data.gradient,den=g.dx*g.dx+g.dy*g.dy||1;
+          const t=((p.x-g.x)*g.dx+(p.y-g.y)*g.dy)/den;
+          return palette(base,[[0,-.25],[.28,.07],[.60,.20],[1,-.19]],t);
+        }
+        if(data.radial&&face.kind==='spherical'){
+          const g=data.radial,dx=p.x-(g.x-.28*g.r),dy=p.y-(g.y-.3*g.r);
+          return palette(base,[[0,.28],[.7,.06],[1,-.24]],
+            Math.hypot(dx,dy)/g.r);
+        }
+        return baseColor();
+      });
+      for(let j=1;j<ps.length-1;j++){
+        for(const k of [0,j,j+1]){
+          const q=ps[k];fills.push(q.x,q.y,q.depth,q.inv,1,...colors[k]);
+        }
+      }
+    }
   }
-  // Draw edges through the same depth-buffer and style path as the mesh.
   for(const part of scene.parts){
    const features=style.features?style.features(part,camera):part.features||[];
    for(const f of features){
