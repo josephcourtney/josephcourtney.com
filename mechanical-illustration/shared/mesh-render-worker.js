@@ -1,6 +1,6 @@
 /* Off-main-thread geometry-native SVG rendering. */
 'use strict';
-importScripts('/mechanical-illustration/shared/vector-core.js?v=3');
+importScripts('/mechanical-illustration/shared/vector-core.js?v=4');
 const CAM_D=3.65, DEPTH_LAYERS=1;
 let selected=null, contours=true, wire=false, showInternal=true, showSuggestive=false;
 let camera={yaw:0,pitch:-.12,zoom:1},visible=0,currentFamily='bunny';
