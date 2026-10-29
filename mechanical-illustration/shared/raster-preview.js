@@ -115,7 +115,7 @@ class RasterPreview{
     const d=m.normals[a]*m.normals[b]+m.normals[a+1]*m.normals[b+1]+m.normals[a+2]*m.normals[b+2];
     sharp=d<threshold;
    }
-   if((sil&& (A||B))||sharp)quad(lines,p[e.p],p[e.q],(sil?(style.lineWidth??inkPolicy.silhouetteWidth):inkPolicy.creaseWidth)*(style.cssPxToScene||1)*rasterScale,silhouette&&sil?silhouette:crease);
+   if((sil&& (A||B))||sharp)quad(lines,p[e.p],p[e.q],(sil?(style.lineWidth??inkPolicy.silhouetteWidth):inkPolicy.creaseWidth)*(style.cssPxToScene||1)*rasterScale*1.45,silhouette&&sil?silhouette:crease);
   }
   this.drawGeometry(fills,lines,true);
  }
