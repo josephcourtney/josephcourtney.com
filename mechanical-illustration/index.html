@@ -325,7 +325,7 @@ input[type=range]{width:100%;accent-color:#d56c43;cursor:pointer;height:22px;mar
 </nav>
 <section class="workspace">
     <div class="viewer">
-      <svg id="bunny-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 610" role="img" aria-label="Interactive three-dimensional Stanford Bunny rendered as animated SVG paths" style="--hue:210;--ink:#29394a;--lineWidth:1.9">
+      <svg id="bunny-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 610" role="img" aria-label="Interactive three-dimensional Stanford Bunny rendered as animated SVG paths" style="--hue:210;--ink:#29394a;--lineWidth:1.25">
         <title>Stanford Bunny — live SVG projection</title>
         <defs><pattern id="major-grid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M50 0H0V50" fill="none" stroke="#dfe7eb" stroke-width="0.7"/></pattern>
           <pattern id="minor-grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M10 0H0V10" fill="none" stroke="#e9eef1" stroke-width=".42"/></pattern></defs>
@@ -364,8 +364,8 @@ input[type=range]{width:100%;accent-color:#d56c43;cursor:pointer;height:22px;mar
         <input id="spin-speed" type="range" min="0" max="1.2" value=".35" step=".05">
         <label class="label" for="hue">Surface hue <span id="hue-read">210°</span></label>
         <input id="hue" type="range" min="0" max="360" value="210" step="1">
-        <label class="label" for="ink-width">Contour width <span id="ink-read">1.9 px</span></label>
-        <input id="ink-width" type="range" min="0" max="4" value="1.9" step=".1">
+        <label class="label" for="ink-width">Contour width <span id="ink-read">1.25 px</span></label>
+        <input id="ink-width" type="range" min="0" max="4" value="1.25" step=".05">
         <label class="toggle-row" for="contours">Silhouette contours <input id="contours" type="checkbox" checked></label>
         <label class="toggle-row" for="edges">Topology debug wireframe <input id="edges" type="checkbox"></label>
         <label class="toggle-row" for="grid">Reference grid <input id="grid" type="checkbox" checked></label>
@@ -400,7 +400,7 @@ window.__showMesh=false;
 window.__unifiedMeshRoot=document.getElementById('unified-mesh-host').attachShadow({mode:'open'});
 window.__unifiedMeshRoot.appendChild(document.getElementById('unified-mesh-template').content.cloneNode(true));
 </script>
-<script src="/mechanical-illustration/shared/vector-core.js?v=4"></script>
+<script src="/mechanical-illustration/shared/vector-core.js?v=5"></script>
 <script src="/mechanical-illustration/shared/raster-preview.js?v=1"></script>
 <script>/* Kinematics, part hierarchy and semantic SVG share the VectorIllustrationCore kernel. */
 (()=>{
@@ -2000,7 +2000,7 @@ function initAsyncWorkers(){
  let url;
  try {
    if(SCRIPT_SOURCE.length>10000){
-     url=URL.createObjectURL(new Blob(["importScripts("+JSON.stringify(location.origin+"/mechanical-illustration/shared/vector-core.js?v=4")+");\n",SCRIPT_SOURCE],{type:'text/javascript'}));
+     url=URL.createObjectURL(new Blob(["importScripts("+JSON.stringify(location.origin+"/mechanical-illustration/shared/vector-core.js?v=5")+");\n",SCRIPT_SOURCE],{type:'text/javascript'}));
      workerObjectURL=url;
    }else url=script?.src||'mechanism.js';
    for(const key of ['overview','detail']){
@@ -2454,7 +2454,7 @@ requestAnimationFrame(frame);
    .tone-2{fill:hsl(var(--hue) 22% 61%);stroke:none;fill-rule:nonzero}
    .tone-3{fill:hsl(var(--hue) 22% 52%);stroke:none;fill-rule:nonzero}
    .geom-silhouette{fill:none;stroke:#293b36;stroke-width:var(--lineWidth);stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
-   .geom-crease{fill:none;stroke:#3a5a53;stroke-width:1.35;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+   .geom-crease{fill:none;stroke:#3a5a53;stroke-width:.95;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
    .geom-form{fill:none;stroke:#52746c;stroke-width:0.9;stroke-linecap:round;stroke-linejoin:round;opacity:.56;vector-effect:non-scaling-stroke}
    .geom-wire{fill:none;stroke:#53635d;stroke-width:.5;opacity:.22;vector-effect:non-scaling-stroke}
   `;
@@ -2544,7 +2544,7 @@ requestAnimationFrame(frame);
     }
     return depth;
   }
-  function describesOcclusion(a,b,index){
+  function describesOcclusion(a,b,index,inkPolicy){
     const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);
     if(len<2)return false;
     const mx=(a.x+b.x)*.5,my=(a.y+b.y)*.5,nx=-dy/len,ny=dx/len;
@@ -2552,7 +2552,7 @@ requestAnimationFrame(frame);
       const x1=mx+nx*dist,y1=my+ny*dist,x2=mx-nx*dist,y2=my-ny*dist;
       const z1=frontDepthAt(x1,y1,index),z2=frontDepthAt(x2,y2,index);
       if(!Number.isFinite(z1)||!Number.isFinite(z2))return true;
-      if(Math.abs(z1-z2)>0.006)return true;
+      if(Math.abs(z1-z2)>inkPolicy.depthJump)return true;
     }
     return false;
   }
@@ -2649,6 +2649,7 @@ requestAnimationFrame(frame);
     });
     // Mesh topology is the authoritative feature source for both models.
     const edgeFeatures=[];
+    const inkPolicy=VectorIllustrationCore.meshInkPolicy(m.angular);
     const creaseCos=Math.cos((m.angular?33:63)*Math.PI/180);
     for(const e of m.edges){
       const p=pts[e.p],q=pts[e.q],A=allFaces[e.a],B=e.b>=0?allFaces[e.b]:null;
@@ -2683,7 +2684,7 @@ requestAnimationFrame(frame);
       const segments=[];
       for(const poly of f.visible)for(let j=1;j<poly.length;j++)segments.push([poly[j-1],poly[j]]);
       if(f.silhouette&&contours){
-        for(const seg of segments)if(m.angular||describesOcclusion(seg[0],seg[1],index))contourPieces.push(seg);
+        for(const seg of segments)if(m.angular||describesOcclusion(seg[0],seg[1],index,inkPolicy))contourPieces.push(seg);
       }else if(f.crease&&showInternal)creasePieces.push(...segments);
       if(wire)wirePieces.push(...segments);
     }
@@ -2695,7 +2696,7 @@ requestAnimationFrame(frame);
       const d=buckets[i][j].join(''),el=paint[i][j];
       if(el.getAttribute('d')!==d){el.setAttribute('d',d);updated++;}
     }
-    for(const [el,d] of [[silhouettes,joinLines(contourPieces,7.0)],[creases,showInternal?joinLines(creasePieces,3.0):''],[suggestive,joinLines(formPieces,20)],[wireDebug,wire?joinLines(wirePieces,1):'']]){
+    for(const [el,d] of [[silhouettes,joinLines(contourPieces,inkPolicy.silhouetteMinLength)],[creases,showInternal?joinLines(creasePieces,inkPolicy.creaseMinLength):''],[suggestive,joinLines(formPieces,20)],[wireDebug,wire?joinLines(wirePieces,1):'']]){
       if(el.getAttribute('d')!==d){el.setAttribute('d',d);updated++;}
     }
     const t3=performance.now(),alpha=frames<8?.4:.09;
@@ -2731,7 +2732,7 @@ requestAnimationFrame(frame);
       const ink=getComputedStyle(silhouettes).stroke;
       const edgeInk=getComputedStyle(creases).stroke;
       meshGPU.drawMesh(selected,camera,{palette,ink,crease:edgeInk,contours,
-        internal:showInternal,lineWidth:parseFloat(getComputedStyle(svg).getPropertyValue('--lineWidth'))||1.9});
+        internal:showInternal,lineWidth:parseFloat(getComputedStyle(svg).getPropertyValue('--lineWidth'))||VectorIllustrationCore.meshInkPolicy(selected.angular).silhouetteWidth});
       meshCanvas.style.display='block';
       layers.style.visibility='hidden';
       meshRasterVisible=true;
@@ -2799,7 +2800,7 @@ requestAnimationFrame(frame);
     dirty=false;
   }
   try{
-    geometryWorker=new Worker('/mechanical-illustration/shared/mesh-render-worker.js?v=3');
+    geometryWorker=new Worker('/mechanical-illustration/shared/mesh-render-worker.js?v=4');
     geometryWorker.onmessage=e=>{
       const msg=e.data;
       if(msg.type==='mesh-ready'){
