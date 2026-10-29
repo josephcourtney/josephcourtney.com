@@ -65,7 +65,7 @@ function compare(a,b){
   fs.writeFileSync(dir+'/bunny-raster.png',gpuImage);
   const bunnyParity=compare(svgImage,gpuImage);
   assert(bunnyParity.changedPct<3.0,'Bunny raster/SVG parity regressed: '+JSON.stringify(bunnyParity));
-  findings.push({scene:'bunny',parity:bunnyParity});
+  findings.push({scene:'bunny',parity:bunnyParity,ink:inkCompare(svgImage,gpuImage)});
   await page.evaluate(()=>window.meshIllustrationRenderer.cancelPreview());
   const before=await page.evaluate(()=>window.meshIllustrationRenderer.camera);
   const box=await page.locator('#unified-mesh-host #bunny-svg').boundingBox();
