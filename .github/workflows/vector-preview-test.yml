@@ -1,0 +1,33 @@
+name: SVG/raster appearance and interaction
+on:
+  push:
+    paths:
+      - 'mechanical-illustration/**'
+      - '.github/workflows/vector-preview-test.yml'
+  workflow_dispatch:
+jobs:
+  chrome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser test dependencies
+        run: |
+          npm install --no-save playwright pngjs
+          npx playwright install --with-deps chromium
+      - name: Run screenshot and gesture checks
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID || true' EXIT
+          sleep 2
+          node mechanical-illustration/tests/raster-parity.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: svg-raster-previews
+          path: render-test-artifacts/
+          if-no-files-found: ignore
