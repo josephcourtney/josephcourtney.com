@@ -65,7 +65,10 @@ function compare(a,b){
   fs.writeFileSync(dir+'/bunny-raster.png',gpuImage);
   const bunnyParity=compare(svgImage,gpuImage);
   assert(bunnyParity.changedPct<3.0,'Bunny raster/SVG parity regressed: '+JSON.stringify(bunnyParity));
-  findings.push({scene:'bunny',parity:bunnyParity,ink:inkCompare(svgImage,gpuImage)});
+  const primaryInk=inkCompare(svgImage,gpuImage);
+  assert(primaryInk.inkPixelRatio>=.75&&primaryInk.inkPixelRatio<=1.5,
+    'Bunny raster/SVG stroke coverage differs: '+JSON.stringify(primaryInk));
+  findings.push({scene:'bunny',parity:bunnyParity,ink:primaryInk});
   await page.evaluate(()=>window.meshIllustrationRenderer.cancelPreview());
   const before=await page.evaluate(()=>window.meshIllustrationRenderer.camera);
   const box=await page.locator('#unified-mesh-host #bunny-svg').boundingBox();
@@ -93,7 +96,10 @@ function compare(a,b){
   assert(await page.evaluate(()=>window.__meshDrawRaster?.()===true),'Frontal GPU render unavailable');
   const frontalGPU=await page.locator('#unified-mesh-host .viewer').screenshot({timeout:30000});
   fs.writeFileSync(dir+'/bunny-frontal-raster.png',frontalGPU);
-  findings.push({scene:'bunny-alternate-camera',parity:compare(frontalSVG,frontalGPU),ink:inkCompare(frontalSVG,frontalGPU)});
+  const otherInk=inkCompare(frontalSVG,frontalGPU);
+  assert(otherInk.inkPixelRatio>=.75&&otherInk.inkPixelRatio<=1.5,
+    'Alternate camera stroke coverage differs: '+JSON.stringify(otherInk));
+  findings.push({scene:'bunny-alternate-camera',parity:compare(frontalSVG,frontalGPU),ink:otherInk});
   await page.evaluate(()=>window.meshIllustrationRenderer.cancelPreview());
   await page.locator('[data-unified-target="housing"]').click();
   await page.waitForFunction(()=>window.meshIllustrationRenderer?.sceneType==='housing',{timeout:30000});
